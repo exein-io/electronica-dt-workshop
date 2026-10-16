@@ -69,10 +69,14 @@
   </div>
 
   <div class="card">
-    <h2>2. Flash</h2>
+    <h2>2. Choose the image and settings</h2>
+    <div class="row" id="release-row" hidden>
+      <label><input type="radio" name="img" id="img-release"> Release <strong id="release-name"></strong> (latest CI build)</label>
+    </div>
     <div class="row">
-      <button id="flash-release" class="primary" disabled hidden>Flash release <span id="release-name"></span></button>
-      <button id="flash-file" class="primary" disabled>Flash a .hex file…</button>
+      <label><input type="radio" name="img" id="img-file" checked> Own .hex file</label>
+      <button id="pick-file">Choose .hex…</button>
+      <span id="file-name" class="status">none chosen</span>
       <input id="file" type="file" accept=".hex" hidden>
     </div>
     <div class="row" style="margin-top:8px">
@@ -92,20 +96,21 @@
     </div>
     <p class="note">If any of these is set, the flasher also writes a settings page at <code>0x80000</code>. Empty fields keep the firmware's
       own value. The board registers with the token on its next boot (only if it has no identity yet) and then clears it; custom id and host
-      stay until the next flash with settings. Needs firmware that reads the settings page (the workshop firmware does); other firmware ignores it.</p>
+      stay until the next flash with settings. Needs firmware that reads the settings page (the workshop firmware does); other firmware ignores it.
+      Watch the serial terminal for <code>registered with the platform; token cleared</code>.</p>
+  </div>
+
+  <div class="card">
+    <h2>3. Flash</h2>
+    <div class="row">
+      <button id="flash" class="primary" disabled>Flash</button>
+    </div>
     <p class="note">nuSIM safe: the image is refused unless every byte lies below <code>0xF8000</code>
       (nuSIM storage and its UICR keys are never touched). Only the 4&nbsp;KB sectors the image covers are erased; then everything is verified.</p>
     <div class="bar"><label><span>Erase</span><span id="p0t"></span></label><progress id="p0" value="0" max="1"></progress></div>
     <div class="bar"><label><span>Program</span><span id="p1t"></span></label><progress id="p1" value="0" max="1"></progress></div>
     <div class="bar"><label><span>Verify</span><span id="p2t"></span></label><progress id="p2" value="0" max="1"></progress></div>
     <p id="result" class="status"></p>
-  </div>
-
-  <div class="card">
-    <h2>3. Register the board (once)</h2>
-    <p class="note" style="margin-top:0">Enter the Exein Runtime <strong>token</strong> in step 2 and flash: the board registers itself
-      with the platform on its next boot (watch it in the serial terminal: <code>registered with the platform; token cleared</code>).
-      A board that already has an identity keeps it and ignores the token.</p>
   </div>
 
   <div class="card">
@@ -161,9 +166,27 @@ fetch("release.json").then((r) => (r.ok ? r.json() : null)).then((info) => {
   if (!info) return;
   release = info;
   $("release-name").textContent = info.tag;
-  $("flash-release").hidden = false;
-  $("flash-file").classList.remove("primary"); // the bundled release is the default
+  $("release-row").hidden = false;
+  $("img-release").checked = true; // the bundled release is the default
+  updateFlash();
 }).catch(() => {});
+
+// --- Image choice: the bundled release or an own .hex ------------------------
+let picked = null; // File
+function updateFlash() {
+  $("flash").disabled = !usb || ($("img-release").checked ? !release : !picked);
+}
+$("img-release").onchange = $("img-file").onchange = updateFlash;
+$("pick-file").onclick = () => $("file").click();
+$("file").onchange = (ev) => {
+  const f = ev.target.files[0];
+  ev.target.value = "";
+  if (!f) return;
+  picked = f;
+  $("file-name").textContent = f.name;
+  $("img-file").checked = true;
+  updateFlash();
+};
 
 // --- J-Link over WebUSB -------------------------------------------------------
 let usb = null; // { device, readEp, writeEp, mps }
@@ -185,8 +208,7 @@ $("connect").onclick = async () => {
     usb = { device, readEp: inEp.endpointNumber | 0x80, writeEp: outEp.endpointNumber, mps: inEp.packetSize };
     $("probe").textContent = `${device.productName || "J-Link"} ${device.serialNumber || ""}`;
     $("probe").className = "status ok";
-    $("flash-release").disabled = !release;
-    $("flash-file").disabled = false;
+    updateFlash();
     log(`connected: ${device.productName} S/N ${device.serialNumber}, interface ${found.intf}, ` +
         `EP IN 0x${usb.readEp.toString(16)} / OUT 0x${usb.writeEp.toString(16)}, max packet ${usb.mps}`);
   } catch (e) {
@@ -295,7 +317,7 @@ async function loadWasm() {
 
 // --- Flash ----------------------------------------------------------------------
 async function flash(bytes, name) {
-  const buttons = [$("connect"), $("flash-release"), $("flash-file")];
+  const buttons = [$("connect"), $("flash")];
   buttons.forEach((b) => (b.disabled = true));
   [0, 1, 2].forEach((k) => { $("p" + k).value = 0; $("p" + k + "t").textContent = ""; });
   $("result").textContent = "flashing… do not unplug the board";
@@ -334,20 +356,17 @@ async function flash(bytes, name) {
     wasm = null;
   } finally {
     $("connect").disabled = false;
-    $("flash-release").disabled = !release || !usb;
-    $("flash-file").disabled = !usb;
+    updateFlash();
   }
 }
 
-$("flash-release").onclick = async () => {
-  const r = await fetch(release.file);
-  flash(new Uint8Array(await r.arrayBuffer()), `${release.tag} ${release.file}`);
-};
-$("flash-file").onclick = () => $("file").click();
-$("file").onchange = async (ev) => {
-  const f = ev.target.files[0];
-  ev.target.value = "";
-  if (f) flash(new Uint8Array(await f.arrayBuffer()), f.name);
+$("flash").onclick = async () => {
+  if ($("img-release").checked) {
+    const r = await fetch(release.file);
+    flash(new Uint8Array(await r.arrayBuffer()), `${release.tag} ${release.file}`);
+  } else {
+    flash(new Uint8Array(await picked.arrayBuffer()), picked.name);
+  }
 };
 
 // --- Serial terminal (Web Serial, J-Link VCOM) ---------------------------------------

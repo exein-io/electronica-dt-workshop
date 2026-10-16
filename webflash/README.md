@@ -20,8 +20,8 @@ In the devcontainer on GitHub Codespaces, port 8765 is forwarded privately (behi
 ## Usage
 
 1. Open the page, click **Connect J-Link…** and pick the J-Link.
-2. **Flash release** (the image bundled with the page) or **Flash a .hex file…** (an Intel hex built for `nrf9151dk/nrf9151/ns`, e.g. `app/build/merged.hex`). Optionally fill in the settings fields first (see below).
-3. It erases the sectors the image covers, programs, verifies and resets the board.
+2. Choose the image: **Release** (the latest CI build bundled with the page, preselected) or **Own .hex file** (an Intel hex built for `nrf9151dk/nrf9151/ns`, e.g. `app/build/merged.hex`). Optionally fill in the token, custom id and platform host (see below): with a token, the board registers itself on its next boot.
+3. **Flash**: it erases the sectors the image covers, programs, verifies and resets the board.
 
 ## nuSIM safety
 
