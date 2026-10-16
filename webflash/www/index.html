@@ -52,7 +52,7 @@
     Nothing to install. Source: <a href="https://github.com/exein-io/electronica-dt-workshop/tree/main/webflash">exein-io/electronica-dt-workshop</a>.</p>
 
   <div class="alert">
-    This page needs Chrome or Edge 137+ on Linux, macOS or Android. <strong>On Windows</strong> the SEGGER driver owns the J-Link and WebUSB can't open it:
+    This page needs Chrome or Edge 137+ on Linux, macOS or Android. <strong>Not on Windows</strong> (WebUSB transfers there can fail mid-flash):
     flash with Nordic's <code>nrfutil</code> instead, step by step in the
     <a href="https://github.com/exein-io/electronica-dt-workshop#b-with-nrfutil-windows-macos-linux">README</a>.
   </div>
@@ -106,9 +106,14 @@
     <h2>3. Flash</h2>
     <div class="row">
       <button id="flash" class="primary" disabled>Flash</button>
+      <label><input id="backup" type="checkbox" checked> download a nuSIM backup first</label>
     </div>
     <p class="note">nuSIM safe: the image is refused unless every byte lies below <code>0xF8000</code>
-      (nuSIM storage and its UICR keys are never touched). Only the 4&nbsp;KB sectors the image covers are erased; then everything is verified.</p>
+      (nuSIM storage and its UICR keys are never touched). Only the 4&nbsp;KB sectors the image covers are erased; then everything is verified.
+      MCUboot is only rewritten when it changed, and then last: if flashing fails, the board still boots and you can simply retry.</p>
+    <p class="note">The backup (<code>0xF8000–0xFFFFF</code>, read before anything is erased) holds this board's nuSIM credentials: keep it private.
+      It can only be restored onto the same chip, and only as long as its UICR was never erased (see the README).
+      <strong>If flashing fails: don't unplug or reset, click Flash again.</strong></p>
     <div class="bar"><label><span>Erase</span><span id="p0t"></span></label><progress id="p0" value="0" max="1"></progress></div>
     <div class="bar"><label><span>Program</span><span id="p1t"></span></label><progress id="p1" value="0" max="1"></progress></div>
     <div class="bar"><label><span>Verify</span><span id="p2t"></span></label><progress id="p2" value="0" max="1"></progress></div>
@@ -159,6 +164,16 @@ if (missing.length) {
   const el = $("unsupported");
   el.hidden = false;
   el.innerHTML = `<strong>This browser lacks ${missing.join(" and ")}.</strong> Use a current Chrome or Edge (137+).`;
+  $("connect").disabled = true;
+}
+// Windows: WebUSB may open the J-Link but transfers fail mid-erase, which can
+// leave the nRF9151 without a bootloader and locked (nuSIM lost). Use nrfutil.
+if ((navigator.userAgentData?.platform || navigator.platform || "").startsWith("Win")) {
+  const el = $("unsupported");
+  el.hidden = false;
+  el.innerHTML = `<strong>Windows is not supported:</strong> flashing over WebUSB can fail halfway there and lock the board.
+    Flash with Nordic's <code>nrfutil</code>, step by step in the
+    <a href="https://github.com/exein-io/electronica-dt-workshop#b-with-nrfutil-windows-macos-linux">README</a>.`;
   $("connect").disabled = true;
 }
 
@@ -343,7 +358,20 @@ async function flash(bytes, name) {
     new Uint8Array(mem(), sptr, serial.length).set(serial);
     const t0 = performance.now();
     const rc = await w.flash(ptr, bytes.length, usb.device.vendorId, usb.device.productId,
-                             sptr, serial.length, tptr, tlen, cptr, clen, hptr, hlen, usb.readEp, usb.writeEp, usb.mps, $("verbose").checked ? 1 : 0);
+                             sptr, serial.length, tptr, tlen, cptr, clen, hptr, hlen, usb.readEp, usb.writeEp, usb.mps, $("verbose").checked ? 1 : 0,
+                             $("backup").checked ? 1 : 0);
+    // The backup is read before anything is erased: save it even if flashing failed.
+    const blen = w.exports.backup_len();
+    if (blen) {
+      const hex = new TextDecoder().decode(new Uint8Array(mem(), w.exports.backup_ptr(), blen));
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([hex], { type: "text/plain" }));
+      a.download = `nusim-backup-${usb.device.serialNumber || "board"}-${stamp}.hex`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      log(`nuSIM backup saved as ${a.download} (keep it private)`, "ok");
+    }
     if (rc !== 0) {
       const msg = new TextDecoder().decode(new Uint8Array(mem(), w.exports.last_error_ptr(), w.exports.last_error_len()));
       throw new Error(msg);
