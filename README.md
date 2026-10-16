@@ -6,7 +6,7 @@ A joint workshop by [Exein](https://www.exein.io) and [Deutsche Telekom IoT](htt
 Button 2 ─▶ heap burst ─▶ HEAP_LOW policy ─▶ POST /zephyr/threats (modem TLS, LTE-M) ─▶ incident
 ```
 
-**Try it from your browser:** [**exein-io.github.io/electronica-dt-workshop**](https://exein-io.github.io/electronica-dt-workshop/) flashes the latest release onto the DK over USB (Chrome/Edge on Linux, macOS or Android, nothing to install, nuSIM-safe), with a serial terminal and the registration token field. On Windows, or without the browser: [Flash a release with nrfutil](#b-with-nrfutil-windows-macos-linux).
+**Try it from your browser:** [**exein-io.github.io/electronica-dt-workshop**](https://exein-io.github.io/electronica-dt-workshop/) flashes the latest release onto the DK over USB (Chrome/Edge on Linux, macOS or Android, nothing to install, nuSIM-safe; not on Windows), with a serial terminal and the registration token field. On Windows, or without the browser: [Flash a release with nrfutil](#b-with-nrfutil-windows-macos-linux).
 
 ---
 
@@ -85,7 +85,7 @@ Open **https://exein-io.github.io/electronica-dt-workshop/** in Chrome or Edge, 
 
 ### B. With nrfutil (Windows, macOS, Linux)
 
-Use this on Windows (the SEGGER driver keeps WebUSB from opening the J-Link) or whenever you prefer Nordic's tools. **Never** use nRF Connect for Desktop's Programmer or Quick Start: they erase the whole chip and destroy the nuSIM.
+Use this on Windows (the web flasher refuses Windows: a flash there failed halfway and locked a board) or whenever you prefer Nordic's tools. **Never** use nRF Connect for Desktop's Programmer or Quick Start: they erase the whole chip and destroy the nuSIM.
 
 1. Install the [SEGGER J-Link Software](https://www.segger.com/downloads/jlink/) (≥ V9.52), [nRF Util](https://www.nordicsemi.com/Products/Development-tools/nRF-Util) and Python 3, then run `nrfutil install device`.
 2. Get this repo (`git clone https://github.com/exein-io/electronica-dt-workshop`, or **Code → Download ZIP**) and `workshop.hex` from the [latest release](https://github.com/exein-io/electronica-dt-workshop/releases/latest) into the repo folder.
@@ -264,6 +264,7 @@ Then `workload_start()` arms Button 2.
 
 ## Troubleshooting
 
+- **Flashing failed halfway:** don't unplug, power off or reset the board, flash again right away. On the nRF9151 debug access locks at every reset until the firmware opens it; without a bootloader nothing opens it, and the only way back in is ERASEALL, which destroys the nuSIM.
 - **`NW reg status: 90` (UICC_FAIL):** built without the Redtea TF-M (`overlay-nusim.conf` missing), or the nuSIM ITS is erased (check `0xF8000`; restoring needs a full backup taken before, otherwise DT has to re-provision).
 - **`no connectivity before registration (-116)`:** LTE attach slower than `CONFIG_RUNTIME_MONITOR_NET_CONNECT_TIMEOUT` (180 s).
 - **Incidents POST `400`:** an unsupported finding in the batch; see *Platform support*.
