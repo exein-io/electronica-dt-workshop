@@ -266,6 +266,7 @@ Then `workload_start()` arms Button 2.
 
 | Purpose | Contact |
 |---------|---------|
+| Exein Runtime / this workshop | thomas@exein.io |
 | DT IoT support / nuSIM re-provisioning | iot-embedded-connect@telekom.de |
 | nuSIM library (Redtea Mobile) | nusim@redteamobile.com |
 
