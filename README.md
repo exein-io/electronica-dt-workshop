@@ -6,6 +6,8 @@ A joint workshop by [Exein](https://www.exein.io) and [Deutsche Telekom IoT](htt
 Button 2 ─▶ heap burst ─▶ HEAP_LOW policy ─▶ POST /zephyr/threats (modem TLS, LTE-M) ─▶ incident
 ```
 
+**Try it from your browser:** [**exein-io.github.io/electronica-dt-workshop**](https://exein-io.github.io/electronica-dt-workshop/) flashes the latest release onto the DK over USB (Chrome/Edge on Linux, macOS or Android, nothing to install, nuSIM-safe), with a serial terminal and the registration token field. Details: [Alternative: flash from the browser](#alternative-flash-from-the-browser).
+
 ---
 
 ## Hardware
@@ -59,7 +61,7 @@ A safe `west flash` logs `Erasing address ranges touched by firmware` (sector er
 scripts/build.sh                                   # → app/build/merged.hex
 HEX=app/build/merged.hex webflash/serve.sh # flash it from your browser (WebUSB)
 ```
-USB isn't passed into the container: the forwarded port 8765 opens the web flasher in your local Chrome/Edge, which talks to the board. Or download `merged.hex` (right click → Download) and flash it as in the Quick start.
+USB isn't passed into the container: the forwarded port 8765 opens the web flasher in your local Chrome/Edge, which talks to the board. Or download `merged.hex` (right click → Download) and flash it with [the web flasher](https://exein-io.github.io/electronica-dt-workshop/) (**Flash a .hex file…**) or as in the Quick start.
 
 ### Workspace
 
@@ -276,6 +278,7 @@ Then `workload_start()` arms Button 2.
 - [nuSIM explained](https://iot.telekom.com/en/blog/nusim-the-integrated-sim-for-the-internet-of-things) (Telekom IoT blog)
 - [IoT Embedded Connect](https://iot.telekom.com/en/iot-connectivity/connected-iot-module): Telekom's modules with nuSIM and connectivity, including the nRF9151
 - [nuSIM for the nRF91 Series](https://www.nordicsemi.com/Nordic-news/2025/10/Nordic-simplifies-cellular-IoT-connectivity-with-nuSIM-solution-for-nRF91-Series) (Nordic Semiconductor)
+- [Web flasher](https://exein-io.github.io/electronica-dt-workshop/): flash the latest release from the browser
 - [Exein Runtime](https://runtime.exein.io): the platform the incidents show up on
 
 ## Repo layout
