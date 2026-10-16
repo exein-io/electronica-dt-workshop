@@ -15,10 +15,9 @@ Button 2 ─▶ heap burst ─▶ HEAP_LOW policy ─▶ POST /zephyr/threats (m
 | Item | Value |
 |------|-------|
 | Board | Nordic nRF9151 DK (PCA10171) |
-| IMEI | `359404230041098` |
-| ICCID | `89882280000136010234` |
+| IMEI / ICCID | per board: `AT+CGSN` / `AT%XICCID` in the serial terminal |
 | Modem FW | `mfw_nrf91x1_2.0.1` |
-| J-Link S/N | `1051255386` |
+| J-Link S/N | per board: on the DK's sticker, or `nrfutil device list` |
 | Operator | Telekom Deutschland (MCC 262, MNC 01), LTE-M |
 
 ---
@@ -118,7 +117,7 @@ PATH="/tmp/nrfbin:$PATH" west flash -d electronica-dt-workshop/app/build   # NEV
 
 ## Run the demo
 
-UART log (`/dev/serial/by-id/usb-SEGGER_J-Link_001051255386-if00`, 115200, DTR asserted):
+UART log (Linux: `/dev/serial/by-id/usb-SEGGER_J-Link_<S/N>-if00`, 115200, DTR asserted):
 
 ```
 net: L4 connected                                   ← LTE up (LED1 solid; blinking = no LTE)
@@ -137,7 +136,7 @@ dispatcher: POST 1 record(s) … POST status 204
 
 **Platform support (2026-10):** `/zephyr/threats` accepts only `heap_low`. Every other finding (`heap_drop`, `stack_low`, `log`, …) gets the **whole batch** rejected with `400 unsupported finding`, so the blob is built with `POLICY_HEAP_LOW` only.
 
-nuSIM health check over AT (the app's AT host shares the log UART; any terminal with DTR asserted, e.g. `python3 -m serial.tools.miniterm --dtr 1 <port> 115200`): `AT%XICCID` → the ICCID above, `AT+CEREG?` → `0,1`/`0,5`, `AT+COPS?` → `26201`.
+nuSIM health check over AT (the app's AT host shares the log UART; any terminal with DTR asserted, e.g. `python3 -m serial.tools.miniterm --dtr 1 <port> 115200`): `AT%XICCID` → your nuSIM's ICCID (`8988228…`), `AT+CEREG?` → `0,1`/`0,5`, `AT+COPS?` → `26201`.
 
 ---
 
