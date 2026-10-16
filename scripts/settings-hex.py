@@ -7,7 +7,7 @@ strings, empty = keep the firmware's value. Flash it next to the app with
 nrfutil; the board registers with the token on its next boot (if it has no
 identity yet) and then clears it.
 
-  scripts/settings-hex.py --token <bootstrap token> > settings.hex
+  scripts/settings-hex.py --token <bootstrap token> -o settings.hex
   nrfutil device program --firmware settings.hex --options chip_erase_mode=ERASE_RANGES_TOUCHED_BY_FIRMWARE
 """
 import argparse
@@ -38,13 +38,19 @@ def main():
     ap.add_argument("--token", default="")
     ap.add_argument("--custom-id", default="")
     ap.add_argument("--host", default="", help="default: the firmware's built-in platform.exein.io")
+    ap.add_argument("-o", "--output", help="file to write (default: stdout)")
     a = ap.parse_args()
     if not re.fullmatch(r"[A-Za-z0-9.-]*", a.host):
         sys.exit("host must be a plain hostname or IPv4 address (no scheme or port)")
     page = (b"EXEINCFG" + field("token", a.token, 128) + field("custom id", a.custom_id, 64)
             + field("host", a.host, 64))
     page += b"\xff" * (-len(page) % 4)  # flash writes are 4-byte words
-    sys.stdout.write(ihex(PAGE, page))
+    if a.output:
+        # newline="\n": plain ASCII hex on every OS (PowerShell's > writes UTF-16)
+        with open(a.output, "w", newline="\n") as f:
+            f.write(ihex(PAGE, page))
+    else:
+        sys.stdout.write(ihex(PAGE, page))
 
 
 if __name__ == "__main__":

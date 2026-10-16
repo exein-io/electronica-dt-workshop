@@ -6,7 +6,7 @@ A joint workshop by [Exein](https://www.exein.io) and [Deutsche Telekom IoT](htt
 Button 2 ─▶ heap burst ─▶ HEAP_LOW policy ─▶ POST /zephyr/threats (modem TLS, LTE-M) ─▶ incident
 ```
 
-**Try it from your browser:** [**exein-io.github.io/electronica-dt-workshop**](https://exein-io.github.io/electronica-dt-workshop/) flashes the latest release onto the DK over USB (Chrome/Edge on Linux, macOS or Android, nothing to install, nuSIM-safe), with a serial terminal and the registration token field. Details: [Alternative: flash from the browser](#alternative-flash-from-the-browser).
+**Try it from your browser:** [**exein-io.github.io/electronica-dt-workshop**](https://exein-io.github.io/electronica-dt-workshop/) flashes the latest release onto the DK over USB (Chrome/Edge on Linux, macOS or Android, nothing to install, nuSIM-safe), with a serial terminal and the registration token field. On Windows, or without the browser: [Flash a release with nrfutil](#b-with-nrfutil-windows-macos-linux).
 
 ---
 
@@ -60,7 +60,7 @@ A safe `west flash` logs `Erasing address ranges touched by firmware` (sector er
 scripts/build.sh                                   # → app/build/merged.hex
 HEX=app/build/merged.hex webflash/serve.sh         # flash it from your browser (WebUSB)
 ```
-USB isn't passed into the container: the forwarded port 8765 opens the web flasher in your local Chrome/Edge, which talks to the board. Or download `merged.hex` (right click → Download) and flash it with [the web flasher](https://exein-io.github.io/electronica-dt-workshop/) (**Own .hex file**) or as in the Quick start.
+USB isn't passed into the container: the forwarded port 8765 opens the web flasher in your local Chrome/Edge, which talks to the board. Or download `merged.hex` (right click → Download) and flash it with [the web flasher](https://exein-io.github.io/electronica-dt-workshop/) (**Own .hex file**) or with nrfutil as in [Flash a release](#b-with-nrfutil-windows-macos-linux).
 
 ### Workspace
 
@@ -75,25 +75,32 @@ On a flaky connection: `git config --global http.version HTTP/1.1`.
 
 ---
 
-## Quick start: flash a release
+## Flash a release
 
-No toolchain needed, only [`nrfutil`](https://www.nordicsemi.com/Products/Development-tools/nRF-Util) (with `nrfutil install device`) and Python 3, in a clone of this repo:
+Every release has `workshop.hex` (the firmware) on the [Releases page](https://github.com/exein-io/electronica-dt-workshop/releases/latest). A **new board also needs its Exein Runtime token** (the bootstrap token from runtime.exein.io) once, as a small settings page next to the firmware; the board registers itself on its next boot. Reflashing a registered board needs no token.
 
-```bash
-curl -LO https://github.com/exein-io/electronica-dt-workshop/releases/latest/download/workshop.hex
-scripts/check-nusim-hex.py workshop.hex                          # refuses images that touch the nuSIM region
-scripts/settings-hex.py --token <bootstrap token> > settings.hex    # optional: --custom-id, --host
-for f in workshop.hex settings.hex; do
-  nrfutil device program --firmware $f --options chip_erase_mode=ERASE_RANGES_TOUCHED_BY_FIRMWARE   # NEVER a full erase
-done
-nrfutil device reset
-```
+### A. From the browser (Linux, macOS, Android)
 
-`settings.hex` is the same settings page the web flasher writes (`0x80000`). On its next boot the board registers itself with the platform, stores the identity in the modem and clears the token. A board that already has an identity ignores the token, so reflashing never creates a new agent; you only need `settings.hex` once per board.
+Open **https://exein-io.github.io/electronica-dt-workshop/** in Chrome or Edge, connect the J-Link, enter the token (first time), click **Flash**. Nothing to install. Details: [`webflash/`](webflash/README.md).
 
-### Alternative: flash from the browser
+### B. With nrfutil (Windows, macOS, Linux)
 
-[`webflash/`](webflash/README.md): probe-rs compiled to WebAssembly flashes the DK's onboard J-Link over WebUSB from Chrome/Edge 137+ on Linux, macOS or Android, with no tools installed. It has the same nuSIM guard (refuses anything at or above `0xF8000`), erases only touched sectors and verifies. Live at https://exein-io.github.io/electronica-dt-workshop/ with the latest release image (CI publishes it on GitHub Pages for each tag and attaches it to the release); `webflash/serve.sh` serves it on localhost or as a Codespaces port, also with your own build. It also has a serial terminal (log + AT commands) and optional fields for the registration token, custom id and platform host (written to a settings page the firmware reads on boot). With the token, the board registers itself with the platform on first boot (no host script needed).
+Use this on Windows (the SEGGER driver keeps WebUSB from opening the J-Link) or whenever you prefer Nordic's tools. **Never** use nRF Connect for Desktop's Programmer or Quick Start: they erase the whole chip and destroy the nuSIM.
+
+1. Install the [SEGGER J-Link Software](https://www.segger.com/downloads/jlink/) (≥ V9.52), [nRF Util](https://www.nordicsemi.com/Products/Development-tools/nRF-Util) and Python 3, then run `nrfutil install device`.
+2. Get this repo (`git clone https://github.com/exein-io/electronica-dt-workshop`, or **Code → Download ZIP**) and `workshop.hex` from the [latest release](https://github.com/exein-io/electronica-dt-workshop/releases/latest) into the repo folder.
+3. In a terminal in the repo folder (PowerShell, Terminal, bash: the commands are the same; use `python` where `python3` doesn't exist):
+   ```bash
+   python3 scripts/check-nusim-hex.py workshop.hex                       # must print SAFE
+   python3 scripts/settings-hex.py --token <bootstrap token> -o settings.hex   # first time only; optional --custom-id, --host
+   nrfutil device program --firmware workshop.hex --options chip_erase_mode=ERASE_RANGES_TOUCHED_BY_FIRMWARE
+   nrfutil device program --firmware settings.hex --options chip_erase_mode=ERASE_RANGES_TOUCHED_BY_FIRMWARE
+   nrfutil device reset
+   ```
+   `ERASE_RANGES_TOUCHED_BY_FIRMWARE` is mandatory: never a full erase. With several boards connected, add `--serial-number <J-Link S/N>` (`nrfutil device list`).
+4. Watch the log in a serial terminal that asserts DTR (115200 baud, the J-Link's first COM port / tty; e.g. PuTTY, or `python3 -m serial.tools.miniterm --dtr 1 <port> 115200`): a new board logs `registered with the platform; token cleared`, then press **Button 2**.
+
+`settings.hex` is the same settings page the web flasher writes (`0x80000`). The board clears the token after one registration attempt; a board that already has an identity ignores it, so reflashing never creates a new agent.
 
 ## Build and flash from source
 
@@ -105,7 +112,7 @@ electronica-dt-workshop/scripts/build.sh   # west build + nuSIM check, → app/b
 
 west flash -d electronica-dt-workshop/app/build   # NEVER --erase
 
-# once per board: the token as a settings page (see Quick start), or built in for a local build only:
+# once per board: the token as a settings page (see Flash a release), or built in for a local build only:
 #   electronica-dt-workshop/scripts/build.sh '-DCONFIG_RUNTIME_MONITOR_BOOTSTRAP_TOKEN="<bootstrap token>"'
 ```
 
