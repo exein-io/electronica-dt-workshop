@@ -18,7 +18,7 @@ use probe_rs::flashing::{DownloadOptions, FlashProgress, ProgressEvent};
 use probe_rs::probe::jlink::JLink;
 use probe_rs::probe::usb_util::InterfaceExt;
 use probe_rs::probe::{DebugProbeSelector, Probe};
-use probe_rs::Permissions;
+use probe_rs::{MemoryInterface, Permissions};
 
 const CHIP: &str = "nRF9151_xxAA";
 /// First byte of the nuSIM / TF-M ITS region; nothing may be written from here on.
@@ -31,6 +31,14 @@ const CFG_MAGIC: &[u8] = b"EXEINCFG";
 const TOKEN_MAX: usize = 128;
 const CUSTOM_ID_MAX: usize = 64;
 const HOST_MAX: usize = 64;
+/// TF-M storage (nuSIM ITS + NV counters), read into the backup before anything is erased.
+const BACKUP_START: u32 = 0xF8000;
+const BACKUP_LEN: usize = 0x8000;
+/// End of the MCUboot partition. Without a bootloader nothing reopens debug
+/// access after a reset (nRF91x1 APPROTECT), and the only way back in is an
+/// ERASEALL that destroys the nuSIM. So MCUboot is only rewritten when it
+/// changed, and then last, after the app was flashed and verified.
+const BOOT_END: u32 = 0x10000;
 /// SWD clock; probe-rs' default for J-Link is far slower.
 const SWD_KHZ: u32 = 4000;
 
@@ -124,7 +132,55 @@ fn cfg_page(token: &str, custom_id: &str, host: &str) -> Result<Option<Vec<u8>>,
     Ok(Some(page))
 }
 
-fn flash_image(hex: &str, cfg: Option<Vec<u8>>, vid: u16, pid: u16, serial: Option<String>, read_ep: u8, write_ep: u8, max_packet: usize) -> Result<(), String> {
+/// Intel hex (extended linear address records, 16-byte data records) of `data` at `addr`.
+fn to_ihex(addr: u32, data: &[u8]) -> String {
+    fn rec(kind: u8, offset: u16, payload: &[u8]) -> String {
+        let mut b = vec![payload.len() as u8, (offset >> 8) as u8, offset as u8, kind];
+        b.extend_from_slice(payload);
+        let sum = b.iter().fold(0u8, |a, x| a.wrapping_add(*x));
+        b.push(sum.wrapping_neg());
+        format!(":{}\n", b.iter().map(|x| format!("{x:02X}")).collect::<String>())
+    }
+    let mut out = String::new();
+    let mut upper = None;
+    for (i, chunk) in data.chunks(16).enumerate() {
+        let a = addr + (i * 16) as u32;
+        if upper != Some(a >> 16) {
+            upper = Some(a >> 16);
+            out += &rec(4, 0, &((a >> 16) as u16).to_be_bytes());
+        }
+        out += &rec(0, a as u16, chunk);
+    }
+    out + &rec(1, 0, &[])
+}
+
+/// Erase/program/verify progress for the page's bars (fresh counters per commit).
+fn page_progress() -> FlashProgress<'static> {
+    let (mut erased, mut programmed, mut verified) = (0u64, 0u64, 0u64);
+    let (mut erase_total, mut program_total, mut verify_total) = (0u64, 0u64, 0u64);
+    FlashProgress::new(move |ev| unsafe {
+        match ev {
+            ProgressEvent::AddProgressBar { operation, total } => match format!("{operation:?}").as_str() {
+                "Erase" => erase_total += total.unwrap_or(0),
+                "Program" => program_total += total.unwrap_or(0),
+                "Verify" => verify_total += total.unwrap_or(0),
+                _ => {}
+            },
+            ProgressEvent::Progress { operation, size, .. } => match format!("{operation:?}").as_str() {
+                "Erase" => { erased += size; progress(0, erased as u32, erase_total as u32) }
+                "Program" => { programmed += size; progress(1, programmed as u32, program_total as u32) }
+                "Verify" => { verified += size; progress(2, verified as u32, verify_total as u32) }
+                _ => {}
+            },
+            _ => {}
+        }
+    })
+}
+
+/// Backup of the last run (Intel hex), handed to the page even when flashing fails.
+static BACKUP: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+fn flash_image(hex: &str, cfg: Option<Vec<u8>>, backup: bool, vid: u16, pid: u16, serial: Option<String>, read_ep: u8, write_ep: u8, max_packet: usize) -> Result<(), String> {
     let mut segs = parse_hex(hex)?;
     if let Some(page) = cfg {
         if segs.iter().any(|(a, d)| *a < CFG_PAGE + 0x1000 && *a + d.len() as u32 > CFG_PAGE) {
@@ -144,36 +200,63 @@ fn flash_image(hex: &str, cfg: Option<Vec<u8>>, vid: u16, pid: u16, serial: Opti
         tracing::warn!("could not set SWD speed to {SWD_KHZ} kHz: {e}");
     }
     // Permissions::new() = no erase-all: probe-rs refuses ERASEALL instead of wiping UICR.
-    let mut session = probe.attach(CHIP, Permissions::new()).map_err(|e| format!("attach: {e}"))?;
+    let mut session = probe.attach(CHIP, Permissions::new()).map_err(|e| format!(
+        "attach: {e}. If the log says \"Core 0 is locked\": debug access is locked (APPROTECT) because the firmware \
+         isn't running. Power-cycle the board, wait a few seconds, retry. Never use recover / erase all: it destroys the nuSIM."))?;
     tracing::info!("attached to {CHIP}");
 
-    let mut loader = session.target().flash_loader();
-    for (addr, data) in &segs {
-        loader.add_data(*addr as u64, data).map_err(|e| format!("loader: {e}"))?;
+    if backup {
+        let mut buf = vec![0u8; BACKUP_LEN];
+        session.core(0).and_then(|mut c| c.read(BACKUP_START as u64, &mut buf))
+            .map_err(|e| format!("nuSIM backup failed, nothing flashed: {e}"))?;
+        *BACKUP.lock().unwrap() = to_ihex(BACKUP_START, &buf);
+        tracing::info!("nuSIM backup: 0x{BACKUP_START:X}..0x{:X} read", BACKUP_START as usize + BACKUP_LEN);
     }
 
-    let mut opts = DownloadOptions::default();
-    opts.verify = true;
-    let (mut erased, mut programmed, mut verified) = (0u64, 0u64, 0u64);
-    let (mut erase_total, mut program_total, mut verify_total) = (0u64, 0u64, 0u64);
-    opts.progress = FlashProgress::new(move |ev| unsafe {
-        match ev {
-            ProgressEvent::AddProgressBar { operation, total } => match format!("{operation:?}").as_str() {
-                "Erase" => erase_total += total.unwrap_or(0),
-                "Program" => program_total += total.unwrap_or(0),
-                "Verify" => verify_total += total.unwrap_or(0),
-                _ => {}
-            },
-            ProgressEvent::Progress { operation, size, .. } => match format!("{operation:?}").as_str() {
-                "Erase" => { erased += size; progress(0, erased as u32, erase_total as u32) }
-                "Program" => { programmed += size; progress(1, programmed as u32, program_total as u32) }
-                "Verify" => { verified += size; progress(2, verified as u32, verify_total as u32) }
-                _ => {}
-            },
-            _ => {}
+    // MCUboot segments identical to what is in flash are dropped.
+    let (mut boot, app): (Vec<_>, Vec<_>) = segs.into_iter().partition(|(a, _)| *a < BOOT_END);
+    let mut core = session.core(0).map_err(|e| format!("core: {e}"))?;
+    let mut kept = Vec::new();
+    for (addr, data) in boot.drain(..) {
+        let mut cur = vec![0u8; data.len()];
+        core.read(addr as u64, &mut cur).map_err(|e| format!("read MCUboot: {e}"))?;
+        if cur == data {
+            tracing::info!("MCUboot at 0x{addr:X} unchanged: not erased");
+        } else {
+            tracing::warn!("MCUboot at 0x{addr:X} differs: rewritten last");
+            kept.push((addr, data));
         }
-    });
-    loader.commit(&mut session, opts).map_err(|e| format!("flash: {e}"))?;
+    }
+    drop(core);
+
+    // App (and settings page) first, MCUboot last; each part retried once in
+    // this session, while debug access is still open.
+    for part in [app, kept] {
+        if part.is_empty() {
+            continue;
+        }
+        let mut last = String::new();
+        for attempt in 1..=2 {
+            let mut loader = session.target().flash_loader();
+            for (addr, data) in &part {
+                loader.add_data(*addr as u64, data).map_err(|e| format!("loader: {e}"))?;
+            }
+            let mut opts = DownloadOptions::default();
+            opts.verify = true;
+            opts.progress = page_progress();
+            match loader.commit(&mut session, opts) {
+                Ok(()) => { last.clear(); break; }
+                Err(e) => {
+                    last = e.to_string();
+                    tracing::warn!("flash attempt {attempt} failed: {last}");
+                }
+            }
+        }
+        if !last.is_empty() {
+            return Err(format!("flash: {last}. Do NOT unplug, power off or reset the board: \
+                debug access is still open now, but locks at the next reset if the image is incomplete. Click Flash again."));
+        }
+    }
     tracing::info!("flashed and verified; resetting");
 
     session.core(0).and_then(|mut c| c.reset()).map_err(|e| format!("reset: {e}"))?;
@@ -200,8 +283,9 @@ pub extern "C" fn flash(
     token_ptr: *const u8, token_len: u32,
     custom_id_ptr: *const u8, custom_id_len: u32,
     host_ptr: *const u8, host_len: u32,
-    read_ep: u32, write_ep: u32, max_packet: u32, verbose: u32,
+    read_ep: u32, write_ep: u32, max_packet: u32, verbose: u32, backup: u32,
 ) -> i32 {
+    BACKUP.lock().unwrap().clear();
     let _ = tracing_subscriber::fmt()
         .with_max_level(if verbose != 0 { tracing::Level::DEBUG } else { tracing::Level::INFO })
         .with_writer(io::stderr)
@@ -219,7 +303,7 @@ pub extern "C" fn flash(
     let cfg = cfg_page(&text(token_ptr, token_len), &text(custom_id_ptr, custom_id_len), &text(host_ptr, host_len));
     let result = match (std::str::from_utf8(&hex), cfg) {
         (_, Err(e)) => Err(e),
-        (Ok(text), Ok(cfg)) => flash_image(text, cfg, vid as u16, pid as u16, serial, read_ep as u8, write_ep as u8, max_packet as usize),
+        (Ok(text), Ok(cfg)) => flash_image(text, cfg, backup != 0, vid as u16, pid as u16, serial, read_ep as u8, write_ep as u8, max_packet as usize),
         (Err(_), _) => Err("image is not a text Intel hex".into()),
     };
     match result {
@@ -242,9 +326,29 @@ pub extern "C" fn last_error_len() -> u32 {
     LAST_ERROR.lock().unwrap().len() as u32
 }
 
+/// The nuSIM backup of the last `flash` call as Intel hex (empty if none was taken).
+#[no_mangle]
+pub extern "C" fn backup_ptr() -> *const u8 {
+    BACKUP.lock().unwrap().as_ptr()
+}
+
+#[no_mangle]
+pub extern "C" fn backup_len() -> u32 {
+    BACKUP.lock().unwrap().len() as u32
+}
+
 #[cfg(test)]
 mod tests {
-    use super::parse_hex;
+    use super::{parse_hex, to_ihex};
+
+    #[test]
+    fn backup_hex_round_trip() {
+        let data: Vec<u8> = (0..0x8000u32).map(|i| (i * 7) as u8).collect();
+        let hex = to_ihex(0xF8000, &data);
+        assert!(hex.ends_with(":00000001FF\n"));
+        // parse_hex refuses the nuSIM region, which proves the address is right.
+        assert!(parse_hex(&hex).unwrap_err().contains("F8000"));
+    }
 
     #[test]
     fn nusim_guard() {
