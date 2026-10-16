@@ -27,10 +27,11 @@ Button 2 ─▶ heap burst ─▶ HEAP_LOW policy ─▶ POST /zephyr/threats (m
 The nuSIM credentials live in TF-M ITS flash at `0xF8000–0xFDFFF`, encrypted with keys in UICR (`0xFF8000`). **Erasing or overwriting that region destroys the SIM permanently.**
 
 These destroy the nuSIM:
-- `west flash --erase`, full chip / mass erase, `nrfjprog --eraseall`
+- `west flash --erase`, full chip / mass erase, `nrfjprog --eraseall`, `nrfutil device recover`
 - nRF Connect for Desktop → Programmer or Quick Start (they erase by default)
 - **A different TF-M**: standard NCS TF-M finds the Redtea ITS format incompatible and silently reformats it on first boot. `pm_static.yml` does not prevent that. Only use the Redtea TF-M from `ncs-nusim-app` `ncs-v3.1.0` (proven compatible with the factory ITS).
 - Any hex with data at or above `0xF8000` (TF-M storage `0xF8000–0xFFFFF`, UICR)
+- **A flash that fails halfway, followed by a reset or replug** (see below)
 
 Before every flash:
 ```bash
@@ -39,6 +40,22 @@ scripts/check-nusim-hex.py app/build/merged.hex   # exits 1 on DANGER
 A safe `west flash` logs `Erasing address ranges touched by firmware` (sector erase of the hex regions only).
 
 `app/pm_static.yml` pins `tfm_its` at `0xf8000` (not `0xff8000`: that is UICR, outside the 1 MB flash).
+
+### Why a half-finished flash destroys the nuSIM
+
+This happened on 2026-10-16 (web flasher on Windows, a USB transfer failed mid-erase):
+
+1. **Flashing = erase, then write.** Each 4 KB sector is erased before it is written, starting at `0x0`, where MCUboot lives.
+2. **The flash failed at `0x22000`:** MCUboot and part of the app were already erased, nothing new written yet. The chip had no bootable code.
+3. **Harmless so far:** the debug connection was still open; flashing again right away would have fixed it.
+4. **But the nRF9151 locks its debug port at every reset.** Only the running firmware opens it again (allowed by UICR `0x50FA50FA`).
+5. **After the replug no firmware ran, so the port stayed locked:** `nrfutil device protection-get` = `All`, no UART output, only LED5 on.
+6. **The only way back in is ERASEALL** (`nrfutil device recover`), which also erases UICR, including the key slots that hold the key the nuSIM data is encrypted with. That key is read-protected, so **no backup contains it** (a dump shows `0xDEADDEAD`). Restoring the nuSIM data afterwards gives `lib_nusim: cos init failure`; only DT can re-provision the nuSIM.
+
+So:
+- **If a flash fails: don't unplug, power off or reset the board. Flash again immediately.**
+- **A backup (e.g. `nrfutil device dump-to-file`) only helps while UICR is intact:** it repairs an overwritten nuSIM region (the 2026-09-11 case), not a recover.
+- The web flasher (v1.1.0+) never leaves the board without MCUboot: unchanged MCUboot is skipped, a changed one is written last, and each part is retried within the session. It refuses Windows.
 
 ---
 
