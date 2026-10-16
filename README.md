@@ -136,7 +136,7 @@ dispatcher: POST 1 record(s) … POST status 204
 
 **Platform support (2026-10):** `/zephyr/threats` accepts only `heap_low`. Every other finding (`heap_drop`, `stack_low`, `log`, …) gets the **whole batch** rejected with `400 unsupported finding`, so the blob is built with `POLICY_HEAP_LOW` only.
 
-nuSIM health check over AT (the app's AT host shares the log UART; any terminal with DTR asserted, e.g. `python3 -m serial.tools.miniterm --dtr 1 <port> 115200`): `AT%XICCID` → your nuSIM's ICCID (`8988228…`), `AT+CEREG?` → `0,1`/`0,5`, `AT+COPS?` → `26201`.
+nuSIM health check over AT (the app's AT host shares the log UART; any terminal with DTR asserted, e.g. `python3 -m serial.tools.miniterm --dtr 1 <port> 115200`): `AT%XICCID` → your nuSIM's ICCID, `AT+CEREG?` → `0,1`/`0,5`, `AT+COPS?` → `26201`.
 
 ---
 
