@@ -162,6 +162,7 @@ fetch("release.json").then((r) => (r.ok ? r.json() : null)).then((info) => {
   release = info;
   $("release-name").textContent = info.tag;
   $("flash-release").hidden = false;
+  $("flash-file").classList.remove("primary"); // the bundled release is the default
 }).catch(() => {});
 
 // --- J-Link over WebUSB -------------------------------------------------------
