@@ -174,8 +174,14 @@ if ((navigator.userAgentData?.platform || navigator.platform || "").startsWith("
   el.hidden = false;
   el.innerHTML = `<strong>Windows is not supported yet:</strong> a flash over WebUSB failed halfway there and locked the board.
     Flash with Nordic's <code>nrfutil</code>, step by step in the
-    <a href="https://github.com/exein-io/electronica-dt-workshop#b-with-nrfutil-windows-macos-linux">README</a>.`;
+    <a href="https://github.com/exein-io/electronica-dt-workshop#b-with-nrfutil-windows-macos-linux">README</a>.
+    <br><label><input id="win-debug" type="checkbox"> I know this failed before, I want to debug it on Windows
+    (only on a board whose nuSIM I can afford to lose; turns on the verbose log)</label>`;
   $("connect").disabled = true;
+  $("win-debug").onchange = (ev) => {
+    $("connect").disabled = !ev.target.checked || missing.length > 0;
+    if (ev.target.checked) $("verbose").checked = true;
+  };
 }
 
 // --- Release image bundled next to this page (CI) ----------------------------
