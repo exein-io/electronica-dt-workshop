@@ -42,8 +42,8 @@ jobs:
         run: |
           electronica-dt-workshop/scripts/build.sh
           mkdir -p out
-          cp electronica-dt-workshop/runtime-lte/build/merged.hex out/runtime-lte.hex
-          cp electronica-dt-workshop/runtime-lte/build/dfu_application.zip out/runtime-lte-dfu.zip
+          cp electronica-dt-workshop/app/build/merged.hex out/workshop.hex
+          cp electronica-dt-workshop/app/build/dfu_application.zip out/workshop-dfu.zip
 
       - uses: actions/upload-artifact@v6
         with:
@@ -96,7 +96,7 @@ jobs:
           path: wf
       - run: |
           cp wf/www/index.html wf/target/wasm32-wasip1/release/webflash.wasm site/
-          printf '{"tag":"%s","file":"runtime-lte.hex"}\n' "$GITHUB_REF_NAME" > site/release.json
+          printf '{"tag":"%s","file":"workshop.hex"}\n' "$GITHUB_REF_NAME" > site/release.json
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

@@ -26,7 +26,7 @@
 #include <runtime_zephyr.h>
 #include "app_workload.h"
 
-LOG_MODULE_REGISTER(runtime_lte, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(app, LOG_LEVEL_INF);
 
 /* ponytail: fixed modem sec_tag, make it a Kconfig if another app shares the modem. */
 #define SEC_TAG 4242

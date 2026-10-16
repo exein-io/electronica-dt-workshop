@@ -23,7 +23,7 @@ use probe_rs::Permissions;
 const CHIP: &str = "nRF9151_xxAA";
 /// First byte of the nuSIM / TF-M ITS region; nothing may be written from here on.
 const NUSIM_START: u32 = 0xF8000;
-/// Settings page for runtime-lte (start of the unused MCUboot secondary slot):
+/// Settings page of the workshop firmware (start of the unused MCUboot secondary slot):
 /// "EXEINCFG" + token, custom id, host as NUL-terminated strings (empty =
 /// keep the firmware's value). The firmware clears the token after one use.
 const CFG_PAGE: u32 = 0x80000;

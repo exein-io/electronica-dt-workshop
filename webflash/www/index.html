@@ -92,7 +92,7 @@
     </div>
     <p class="note">If any of these is set, the flasher also writes a settings page at <code>0x80000</code>. Empty fields keep the firmware's
       own value. The board registers with the token on its next boot (only if it has no identity yet) and then clears it; custom id and host
-      stay until the next flash with settings. Needs runtime-lte firmware that reads the settings page (v0.4.0+); other firmware ignores it.</p>
+      stay until the next flash with settings. Needs firmware that reads the settings page (the workshop firmware does); other firmware ignores it.</p>
     <p class="note">nuSIM safe: the image is refused unless every byte lies below <code>0xF8000</code>
       (nuSIM storage and its UICR keys are never touched). Only the 4&nbsp;KB sectors the image covers are erased; then everything is verified.</p>
     <div class="bar"><label><span>Erase</span><span id="p0t"></span></label><progress id="p0" value="0" max="1"></progress></div>
@@ -115,7 +115,7 @@
       <span id="term-status" class="status">closed</span>
     </div>
     <p class="note">The board's UART through the J-Link's virtual COM port (pick the J-Link's <em>first</em> port), 115200 baud.
-      Works while the board runs normally and next to flashing. With runtime-lte you can type AT commands, e.g. <code>AT%XICCID</code>.</p>
+      Works while the board runs normally and next to flashing. With the workshop firmware you can type AT commands, e.g. <code>AT%XICCID</code>.</p>
     <pre id="term" style="margin-top:8px"></pre>
     <div class="row" style="margin-top:8px">
       <input id="term-in" placeholder="type and press Enter (sent with CR)" disabled

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write the runtime-lte settings page (token, custom id, platform host) as an Intel hex.
+"""Write the workshop firmware's settings page (token, custom id, platform host) as an Intel hex.
 
 Same page the web flasher writes at 0x80000 (start of the unused MCUboot
 secondary slot): "EXEINCFG" + token, custom id and host as NUL-terminated

@@ -1,6 +1,6 @@
 # Electronica DT workshop: heap exhaustion on nRF9151 + nuSIM
 
-The Exein Runtime Security Monitor runs on a Nordic nRF9151 DK with Deutsche Telekom's integrated nuSIM. Press **Button 2**, the device burst-allocates past 60% of its heap, the monitor reports `heap_low` over LTE, and a **Heap Exhaustion** incident shows up on [runtime.exein.io](https://runtime.exein.io).
+A joint workshop by [Exein](https://www.exein.io) and [Deutsche Telekom IoT](https://iot.telekom.com) at Electronica. The Exein Runtime Security Monitor runs on a Nordic nRF9151 DK with Deutsche Telekom's integrated [nuSIM](https://iot.telekom.com/global/iot-connectivity/isim). Press **Button 2**, the device burst-allocates past 60% of its heap, the monitor reports `heap_low` over LTE, and a **Heap Exhaustion** incident shows up on [runtime.exein.io](https://runtime.exein.io).
 
 ```
 Button 2 ─▶ heap burst ─▶ HEAP_LOW policy ─▶ POST /zephyr/threats (modem TLS, LTE-M) ─▶ incident
@@ -33,11 +33,11 @@ These destroy the nuSIM:
 
 Before every flash:
 ```bash
-scripts/check-nusim-hex.py runtime-lte/build/merged.hex   # exits 1 on DANGER
+scripts/check-nusim-hex.py app/build/merged.hex   # exits 1 on DANGER
 ```
 A safe `west flash` logs `Erasing address ranges touched by firmware` (sector erase of the hex regions only).
 
-`runtime-lte/pm_static.yml` pins `tfm_its` at `0xf8000` (not `0xff8000`, which is outside the 1 MB flash).
+`app/pm_static.yml` pins `tfm_its` at `0xf8000` (not `0xff8000`, which is outside the 1 MB flash).
 
 ---
 
@@ -56,8 +56,8 @@ A safe `west flash` logs `Erasing address ranges touched by firmware` (sector er
 
 **Code → Codespaces → Create codespace on main** (or *Reopen in Container* in VS Code). `.devcontainer/` uses Nordic's `ghcr.io/nrfconnect/sdk-nrf-toolchain:v3.1.0` image and sets up the workspace in `/workspaces` from the vendored snapshot (a few minutes on first start). Then, in the terminal:
 ```bash
-scripts/build.sh                                   # → runtime-lte/build/merged.hex
-HEX=runtime-lte/build/merged.hex webflash/serve.sh # flash it from your browser (WebUSB)
+scripts/build.sh                                   # → app/build/merged.hex
+HEX=app/build/merged.hex webflash/serve.sh # flash it from your browser (WebUSB)
 ```
 USB isn't passed into the container: the forwarded port 8765 opens the web flasher in your local Chrome/Edge, which talks to the board. Or download `merged.hex` (right click → Download) and flash it as in the Quick start.
 
@@ -79,10 +79,10 @@ On a flaky connection: `git config --global http.version HTTP/1.1` and `west upd
 No toolchain needed, only `nrfutil` (Rust, as `nrfutil2` or `nrfutil`) and Python 3:
 
 ```bash
-gh release download v0.5.0 -R exein-io/electronica-dt-workshop -p runtime-lte.hex
-scripts/check-nusim-hex.py runtime-lte.hex                          # refuses images that touch the nuSIM region
+gh release download -R exein-io/electronica-dt-workshop -p workshop.hex
+scripts/check-nusim-hex.py workshop.hex                          # refuses images that touch the nuSIM region
 scripts/settings-hex.py --token <bootstrap token> > settings.hex    # optional: --custom-id, --host
-for f in runtime-lte.hex settings.hex; do
+for f in workshop.hex settings.hex; do
   nrfutil device program --firmware $f --options chip_erase_mode=ERASE_RANGES_TOUCHED_BY_FIRMWARE   # NEVER a full erase
 done
 nrfutil device reset
@@ -99,12 +99,12 @@ nrfutil device reset
 ```bash
 cd ~/git/dt-ws
 export ZEPHYR_SDK_INSTALL_DIR=~/zephyr-sdk-0.17.4
-electronica-dt-workshop/scripts/build.sh   # west build + nuSIM check, → runtime-lte/build/merged.hex
+electronica-dt-workshop/scripts/build.sh   # west build + nuSIM check, → app/build/merged.hex
 # log shows: runtime_zephyr: linking precompiled blob .../libruntime_zephyr.a
 
 # west's nrfutil runner needs the Rust nrfutil under the name `nrfutil`
 mkdir -p /tmp/nrfbin && ln -sf ~/.local/bin/nrfutil2 /tmp/nrfbin/nrfutil
-PATH="/tmp/nrfbin:$PATH" west flash -d electronica-dt-workshop/runtime-lte/build   # NEVER --erase
+PATH="/tmp/nrfbin:$PATH" west flash -d electronica-dt-workshop/app/build   # NEVER --erase
 
 # once per board: the token as a settings page (see Quick start), or built in for a local build only:
 #   electronica-dt-workshop/scripts/build.sh '-DCONFIG_RUNTIME_MONITOR_BOOTSTRAP_TOKEN="<bootstrap token>"'
@@ -141,19 +141,19 @@ nuSIM health check over AT (the app's AT host shares the log UART; any terminal 
 
 ## How it fits together
 
-- **`runtime-lte/src/main.c`**: `nrf_modem_lib_init()`, platform CA into the modem key store (LTE must be off), LTE via the modem's Zephyr net_if (`conn_mgr`), `runtime_zephyr_start()` (waits for IPv4, SNTP, SystemInfo), `workload_start()`. A small credential backend keeps CA + client identity in the modem; nothing goes to TF-M ITS. LED1 tracks L4 connectivity.
-- **`runtime-lte/src/app_workload.c`**: Button 2 → 24 × 512 B burst on the system heap → freed again.
-- **`runtime-lte/prj.conf`**: monitor feature set (frozen into the blob), modem TLS, platform endpoint, AT host.
+- **`app/src/main.c`**: `nrf_modem_lib_init()`, platform CA into the modem key store (LTE must be off), LTE via the modem's Zephyr net_if (`conn_mgr`), `runtime_zephyr_start()` (waits for IPv4, SNTP, SystemInfo), `workload_start()`. A small credential backend keeps CA + client identity in the modem; nothing goes to TF-M ITS. LED1 tracks L4 connectivity.
+- **`app/src/app_workload.c`**: Button 2 → 24 × 512 B burst on the system heap → freed again.
+- **`app/prj.conf`**: monitor feature set (frozen into the blob), modem TLS, platform endpoint, AT host.
 - **Monitor as a binary west module:** see [How the Exein runtime library is configured](#how-the-exein-runtime-library-is-configured).
-- **Rebuilding the blob** (internal; needed after changing any monitor option in `prj.conf`): build `runtime-lte` against the `exein-runtime-zephyr` sources (with a `platform-protobuf` checkout at `../protobuf`, branch `zephyr-agent-schema`, plus the issue #3 patch applied), then package it with upstream's script and commit `dist/runtime-zephyr/*` as `runtime-zephyr/`:
+- **Rebuilding the blob** (internal; needed after changing any monitor option in `prj.conf`): build `app/` against the `exein-runtime-zephyr` sources (with a `platform-protobuf` checkout at `../protobuf`, branch `zephyr-agent-schema`, plus the issue #3 patch applied), then package it with upstream's script and commit `dist/runtime-zephyr/*` as `runtime-zephyr/`:
   ```bash
-  west build -b nrf9151dk/nrf9151/ns --sysbuild -p -d dist/build electronica-dt-workshop/runtime-lte \
+  west build -b nrf9151dk/nrf9151/ns --sysbuild -p -d dist/build electronica-dt-workshop/app \
     -- -DEXTRA_CONF_FILE=$PWD/modules/lib/redteamobile-nusim/overlay-nusim.conf \
        -DZEPHYR_EXTRA_MODULES=~/git/exein-runtime-zephyr      # sources win over the blob module
-  ~/git/exein-runtime-zephyr/scripts/package_blob.sh dist/build/runtime-lte dist
+  ~/git/exein-runtime-zephyr/scripts/package_blob.sh dist/build/app dist
   ```
-  `runtime-lte/compat/zephyr/sys/clock.h` maps upstream's Zephyr 4.2 clock API onto POSIX for NCS v3.1 (issue #4).
-- **CI** (`.github/workflows/build.yml`): same toolchain image, workspace from the vendored zip, builds `runtime-lte`, refuses images that touch the nuSIM region, uploads `runtime-lte.hex` / `-dfu.zip`. Builds and tests `webflash`. A `v*` tag publishes a GitHub Release with the firmware and the web flasher.
+  `app/compat/zephyr/sys/clock.h` maps upstream's Zephyr 4.2 clock API onto POSIX for NCS v3.1 (issue #4).
+- **CI** (`.github/workflows/build.yml`): same toolchain image, workspace from the vendored zip, builds `app/`, refuses images that touch the nuSIM region, uploads `workshop.hex` / `-dfu.zip`. Builds and tests `webflash`. A `v*` tag publishes a GitHub Release with the firmware and the web flasher.
 
 ## How the Exein runtime library is configured
 
@@ -175,7 +175,7 @@ The build log confirms it: `runtime_zephyr: linking precompiled blob …`. The b
 
 ### 2. Fixed in the blob: the monitor block in `prj.conf`
 
-Every option the library code itself reads is compiled into the `.a`. Changing these in `runtime-lte/prj.conf` has **no effect until the blob is rebuilt**:
+Every option the library code itself reads is compiled into the `.a`. Changing these in `app/prj.conf` has **no effect until the blob is rebuilt**:
 
 ```conf
 CONFIG_RUNTIME_MONITOR=y
@@ -269,14 +269,22 @@ Then `workload_start()` arms Button 2.
 | DT IoT support / nuSIM re-provisioning | iot-embedded-connect@telekom.de |
 | nuSIM library (Redtea Mobile) | nusim@redteamobile.com |
 
+## Links
+
+- [nuSIM](https://iot.telekom.com/global/iot-connectivity/isim): Deutsche Telekom's integrated SIM (iSIM) for IoT
+- [nuSIM explained](https://iot.telekom.com/en/blog/nusim-the-integrated-sim-for-the-internet-of-things) (Telekom IoT blog)
+- [IoT Embedded Connect](https://iot.telekom.com/en/iot-connectivity/connected-iot-module): Telekom's modules with nuSIM and connectivity, including the nRF9151
+- [nuSIM for the nRF91 Series](https://www.nordicsemi.com/Nordic-news/2025/10/Nordic-simplifies-cellular-IoT-connectivity-with-nuSIM-solution-for-nRF91-Series) (Nordic Semiconductor)
+- [Exein Runtime](https://runtime.exein.io): the platform the incidents show up on
+
 ## Repo layout
 
 ```
 ├── runtime-zephyr/          # the binary monitor module (blob, Kconfig, module.yml)
-├── runtime-lte/             # the demo app (prj.conf, pm_static.yml, sysbuild/, src/, compat/)
+├── app/                     # the demo app (prj.conf, pm_static.yml, sysbuild/, src/, compat/)
 ├── scripts/
 │   ├── setup-workspace.sh   # west workspace from vendor/
-│   ├── build.sh             # build runtime-lte + nuSIM check
+│   ├── build.sh             # build app/ + nuSIM check
 │   ├── settings-hex.py      # settings page (token, custom id, host) as a hex for nrfutil
 │   └── check-nusim-hex.py   # refuse images that write the nuSIM region
 ├── vendor/                  # ncs-nusim-app ncs-v3.1.0 snapshot (the workspace manifest)
