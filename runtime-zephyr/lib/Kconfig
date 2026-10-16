@@ -1,0 +1,487 @@
+# Copyright (c) 2026 Exein
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig RUNTIME_MONITOR
+	bool "Runtime Security Monitor"
+	depends on MULTITHREADING
+	select ZBUS
+	select ZBUS_MSG_SUBSCRIBER
+	select LOG
+	select THREAD_RUNTIME_STATS    # ABI: adds `usage` to struct k_thread
+	# ADR-010 D1 (amended): the PSA ITS credential store is inside the blob
+	# and needs an ITS provider (SECURE_STORAGE or BUILD_WITH_TFM) at link
+	# time. That prerequisite is enforced by the module-root CMakeLists, NOT
+	# here: `depends on SECURE_STORAGE` forms a Kconfig dependency loop
+	# (RUNTIME_MONITOR selects NETWORKING; OpenThread, which depends on
+	# NETWORKING, implies SECURE_STORAGE — Zephyr 4.4.0). SECURE_STORAGE
+	# also cannot be `select`ed: it is `depends on !BUILD_WITH_TFM` and
+	# needs integrator-owned choices (its_partition, store backend, entropy,
+	# MAX_DATA_SIZE).
+	# Hard requirements — http_app.c will not link without these.
+	# `select` chains the full dep tree because select ignores `depends on`.
+	select NETWORKING
+	select NET_IPV4
+	select NET_TCP
+	select NET_SOCKETS
+	select HTTP_CLIENT
+	select POSIX_API
+	# net/network.c: the L4 readiness wait that gates registration
+	# (ADR-010). Without the connection manager no
+	# NET_EVENT_L4_* is ever emitted and network_wait_connected() can only
+	# time out. Pulls NET_MGMT, NET_MGMT_EVENT and NET_MGMT_EVENT_INFO.
+	select NET_CONNECTION_MANAGER
+	# ADR-010 registration codec (net/registration.c). The nanopb module
+	# must be in the west workspace: zephyr/module.yml `depends` checks it.
+	select NANOPB
+	# Wall clock for the ThreatRequest timestamp (net/time_sync.c); the
+	# platform refuses a report without one.
+	select NET_UDP
+	select SNTP
+	# Kernel features the collector + policies call into directly. Without
+	# these the lib does not compile (HEAP_LISTENER_*) or the runtime probes
+	# return zero (THREAD_*), so they are pinned at the module level rather
+	# than left to each integrator's prj.conf.
+	select SYS_HEAP_LISTENER       # HEAP_LISTENER_ALLOC_DEFINE in collector.c
+	select HEAP_LISTENER           # heap_listener_register() body
+	select THREAD_MONITOR          # k_thread_foreach()
+	select THREAD_STACK_INFO       # stack base/size for stack_low_policy
+	select INIT_STACKS             # k_thread_stack_space_get high-water-mark
+	select THREAD_NAME             # thread name in alert payloads
+	select EVENTS                  # k_event_* used in net/network.c L4 wait
+	select POLL                    # required by EVENTS
+	# ml/features.c window-finalize math: arm_vlog_q31 (batched, one call
+	# per window), arm_divide_q31, arm_sqrt_q31. BASICMATH is explicit
+	# because arm_divide_q31 links against arm_abs_q31. Cortex-M only —
+	# Zephyr exposes the CMSIS Core headers CMSIS-DSP needs
+	# (modules/hal/cmsis_6) only under HAS_CMSIS_CORE_M, so native_sim
+	# takes the portable integer path in ml/features.c instead.
+	imply CMSIS_DSP if CPU_CORTEX_M
+	imply CMSIS_DSP_FASTMATH if CPU_CORTEX_M
+	imply CMSIS_DSP_BASICMATH if CPU_CORTEX_M
+	# ml/inference.c scoring path: arm_mat_vec_mult_f32 for the whitening
+	# matvec (MATRIX), with arm_sub/mult/clip/dot_prod_f32 coming from
+	# BASICMATH above. MATRIX is its own CMSIS-DSP library, so BASICMATH
+	# does not pull it in and the matvec would be an undefined reference.
+	imply CMSIS_DSP_MATRIX if CPU_CORTEX_M
+	# Soft defaults — integrator can still override in prj.conf.
+	imply NET_CONFIG_SETTINGS
+	imply NET_CONFIG_NEED_IPV4
+	# AES lookup tables in flash instead of RAM (RAM is the tight budget on
+	# the L4). Only takes effect when PSA_WANT_KEY_TYPE_AES is on, i.e. with TLS.
+	imply MBEDTLS_AES_ROM_TABLES
+	# Default-on so a hostname CONFIG_THREAT_HTTP_DEST_ADDR resolves on native
+	# stacks out of the box.
+	imply DNS_RESOLVER
+
+	# Opt-in: with the module in a west workspace, every app would otherwise
+	# link the monitor (and a blob of the wrong float ABI).
+	default n
+
+if RUNTIME_MONITOR
+
+module = RUNTIME_MONITOR
+module-str = runtime_monitor
+source "subsys/logging/Kconfig.template.log_config"
+
+# --- Collection ---
+config HEAP_MSGQ_DEPTH
+	int "Heap event message queue depth"
+	default 16
+
+config MONITOR_EVENT_BUF_SIZE
+	int "Event circular buffer size (bytes)"
+	default 4096
+
+config HEAP_COLLECT_PERIOD_MS
+	int "Heap msgq drain period (ms)"
+	default 500
+
+config THREAD_COLLECT_PERIOD_MS
+	int "Thread snapshot collection period (ms)"
+	default 2000
+
+# --- Log capture ---
+config COLLECTOR_LOG_CAPTURE
+	bool "Collector: capture LOG_ERR / LOG_WRN as monitor events"
+	default y
+	depends on LOG && !LOG_MODE_MINIMAL
+	select LOG_OUTPUT
+	help
+	  Registers a custom Zephyr log backend that forwards messages
+	  at or below CONFIG_LOG_CAPTURE_THRESHOLD into event_cbuf as
+	  EVENT_KIND_LOG events. process() runs in the deferred logging
+	  thread; the calling LOG_ERR()/LOG_WRN() never blocks.
+
+config LOG_CAPTURE_THRESHOLD
+	int "Maximum log level to capture (1=ERR, 2=WRN, 3=INF, 4=DBG)"
+	range 1 4
+	default 1
+	depends on COLLECTOR_LOG_CAPTURE
+	help
+	  Lower numeric values are more severe (Zephyr convention). The
+	  backend's process() rejects any message whose level exceeds
+	  this threshold. Default 2 means "capture ERR + WRN, drop
+	  INF and DBG".
+
+config LOG_CAPTURE_TEXT_MAX
+	int "Per-event formatted message buffer size (bytes)"
+	range 16 256
+	default 64
+	help
+	  Maximum formatted text length stored in struct log_event.text.
+	  Always defined (even when COLLECTOR_LOG_CAPTURE=n) because it
+	  sizes the union member of struct monitor_event.
+
+# --- Analysis ---
+config ANALYZER_PERIOD_MS
+	int "Analyzer wake period (ms)"
+	default 1000
+
+config ALERT_COOLDOWN_MS
+	int "Minimum interval between same-type alerts (ms)"
+	default THREAT_FLUSH_INTERVAL_MS
+	help
+	  Per-threat-type rate limit. Same-type alerts arriving within this
+	  window of the previous one are suppressed by the policy engine.
+
+	  Default tracks THREAT_FLUSH_INTERVAL_MS so each HTTP POST carries
+	  at most one alert of each type — the cooldown enforces a "one
+	  per flush window" rate. Override only if you want stricter
+	  rate-limiting (cooldown > flush) or a finer per-batch granularity
+	  (cooldown < flush).
+
+	  First-fire of every type always passes — see policy_engine.c
+	  init for the backdate of last_alert_time[].
+
+# --- Heap Policies ---
+config POLICY_HEAP_LOW
+	bool "HEAP_LOW: heap usage past warning waterline"
+	default y
+
+config HEAP_LOW_PCT
+	int "Heap low warning threshold (percent of capacity)"
+	default 85
+	depends on POLICY_HEAP_LOW
+
+config POLICY_P2
+	bool "MEM_LEAK (P2): trend-based slow drain detection (ADR-002)"
+	default y
+	help
+	  Enables MemLeakPolicy. Each heap ALLOC/FREE event accumulates a
+	  signed net delta over a sliding window of
+	  CONFIG_MEM_LEAK_WINDOW_EVENTS events; the last
+	  CONFIG_MEM_LEAK_N_WINDOWS window balances are retained in a ring.
+	  When every entry is strictly positive AND strictly increasing
+	  (monotonic upward trend), the policy publishes a THREAT_HEAP_DROP
+	  alert carrying live_bytes at the start and end of the trend
+	  window. Conceptually shares the live_bytes notion with P1
+	  (HeapLowPolicy) but tracks it independently — both policies see
+	  the same broadcast event stream.
+
+config MEM_LEAK_WINDOW_EVENTS
+	int "MEM_LEAK: events per detection window"
+	default 32
+	range 4 1024
+	depends on POLICY_P2
+	help
+	  Number of heap events accumulated into a single window's net
+	  byte balance. Smaller values shorten detection latency at the
+	  cost of higher false-positive risk (small windows are noisier).
+
+config MEM_LEAK_N_WINDOWS
+	int "MEM_LEAK: ring depth for trend evaluation"
+	default 8
+	range 3 32
+	depends on POLICY_P2
+	help
+	  Number of consecutive windows that must trend monotonically
+	  upward to fire an alert. State size is N_WINDOWS * 4 B; default
+	  8 matches the ~32 B target in ADR-002 §Policy 2.
+
+config MEM_LEAK_MIN_NET_GROWTH
+	int "MEM_LEAK: min net byte growth across the ring for the drift detector"
+	default 4096
+	range 0 16777216
+	depends on POLICY_P2
+	help
+	  Sustained-growth detector (ADR-002 A1). Net byte growth across the
+	  full N-window span (live_bytes now minus live_bytes N windows ago)
+	  must reach this before a steady / noisy-linear leak is reported.
+	  Keeps a single unfreed spike from tripping the detector. 0 disables
+	  the size gate.
+
+config MEM_LEAK_MIN_POSITIVE_WINDOWS
+	int "MEM_LEAK: min net-positive windows for the drift detector"
+	default 7
+	range 1 32
+	depends on POLICY_P2
+	help
+	  Sustained-growth detector (ADR-002 A1). At least this many of the
+	  N windows must be net-positive for the leak to count as sustained
+	  rather than transient. Set to N_WINDOWS - 1 to tolerate one
+	  recovery window. Clamped to MEM_LEAK_N_WINDOWS at runtime.
+
+# --- Thread Policies ---
+config POLICY_STACK_LOW
+	bool "STACK_LOW: thread stack usage past warning waterline"
+	default y
+
+config THREAD_STACK_WARN_PCT
+	int "Stack usage warning threshold (percent)"
+	default 90
+	depends on POLICY_STACK_LOW
+
+# --- Log Policies ---
+config POLICY_LOG
+	bool "LOG: alert on every captured Zephyr log message"
+	default y
+	depends on COLLECTOR_LOG_CAPTURE
+	help
+	  Enables LogPolicy in the analyzer registry. For each EVENT_KIND_LOG
+	  pulled from event_cbuf, the policy emits a THREAT_LOG alert carrying
+	  the level, source name, and formatted text. Severity is mapped from
+	  the log level: ERR -> CRITICAL, WRN -> WARNING, INF/DBG -> INFO.
+	  Rate-limited by the analyzer's per-type CONFIG_ALERT_COOLDOWN_MS.
+
+# --- Dispatcher / HTTP transport ---
+config THREAT_BATCH_MAX
+	int "Max threat records per HTTP POST"
+	default 16
+	range 1 64
+	help
+	  Dispatcher accumulates up to this many alerts into a single JSON
+	  array before POSTing. Higher values amortise HTTP overhead at the
+	  cost of more RAM (json buffer scales linearly with this value).
+
+config THREAT_FLUSH_INTERVAL_MS
+	int "Max time a partial batch waits before flushing (ms)"
+	default 5000
+	help
+	  Bounds end-to-end alert latency when traffic is below
+	  THREAT_BATCH_MAX. Setting this too low burns CPU on tiny POSTs;
+	  setting it too high delays exfiltration of urgent alerts.
+
+config THREAT_HTTP_DEST_ADDR
+	string "Threat ingest endpoint (hostname or IPv4 address)"
+	default ""
+	help
+	  Threat ingest endpoint, passed to getaddrinfo(): accepts a DNS
+	  hostname or a dotted-quad IPv4 literal. Required:
+	  runtime_zephyr_start() rejects an empty one.
+	  Read in the application build by RUNTIME_ZEPHYR_CONNECTION_INIT
+	  and passed to runtime_zephyr_start(); the library never reads it,
+	  so a blob does not freeze it (ADR-010 D9).
+
+config THREAT_HTTP_PORT
+	int "HTTP destination port"
+	default 80
+	help
+	  Read in the application build by RUNTIME_ZEPHYR_CONNECTION_INIT
+	  and passed to runtime_zephyr_start(); the library never reads it,
+	  so a blob does not freeze it (ADR-010 D9).
+
+# The threat URL path is frozen in lib/src/dispatch/dispatcher_config.h, like
+# the heartbeat and registration paths.
+
+config RUNTIME_MONITOR_CUSTOM_ID
+	string "Integrator-chosen device id (SystemInfoRequest.custom_id)"
+	default ""
+	help
+	  Reported once in SystemInfoRequest at runtime_zephyr_start(), via
+	  RUNTIME_ZEPHYR_SYSINFO_INIT. Empty = field absent; otherwise 1 to
+	  64 characters (build-time assert).
+
+# --- Device registration (ADR-010) ---
+# Always built: at runtime_zephyr_start(), POST RegisterClientRequest{token}
+# to the platform's /register endpoint and decode the returned client
+# certificate + private key (platform.agent.registration.v1, shared with the
+# ESP32 agent). Runs on the caller's thread before the monitor threads
+# start. Non-fatal: if the exchange fails, the monitor runs without a client
+# identity. Step 1 of ADR-010 — persistence and TLS
+# installation follow. Buffer sizes and the URL path are frozen in
+# lib/src/net/registration_config.h.
+config RUNTIME_MONITOR_BOOTSTRAP_TOKEN
+	string "Bootstrap token for the registration POST"
+	default ""
+	help
+	  Bearer credential sent in RegisterClientRequest.token. Required:
+	  runtime_zephyr_start() rejects an empty one; never logged.
+	  Read in the application build by RUNTIME_ZEPHYR_CONNECTION_INIT
+	  and passed to runtime_zephyr_start(); the library never reads it,
+	  so a blob does not freeze it (ADR-010 D9).
+
+config RUNTIME_MONITOR_REGISTRATION_ADDR
+	string "Registration endpoint (hostname or IPv4); empty = telemetry host"
+	default ""
+	help
+	  Host for the /register POST. Empty reuses
+	  CONFIG_THREAT_HTTP_DEST_ADDR.
+	  Read in the application build by RUNTIME_ZEPHYR_CONNECTION_INIT
+	  and passed to runtime_zephyr_start(); the library never reads it,
+	  so a blob does not freeze it (ADR-010 D9).
+
+config RUNTIME_MONITOR_REGISTRATION_PORT
+	int "Registration endpoint port"
+	default THREAT_HTTP_PORT
+	help
+	  Read in the application build by RUNTIME_ZEPHYR_CONNECTION_INIT
+	  and passed to runtime_zephyr_start(); the library never reads it,
+	  so a blob does not freeze it (ADR-010 D9).
+
+config RUNTIME_MONITOR_TLS
+	bool "TLS for the platform connections"
+	default y if NET_SOCKETS_SOCKOPT_TLS
+	help
+	  TLS sockets to the platform; off = plain TCP. Set it explicitly
+	  when offloaded sockets do the TLS (nRF91: runtime_monitor_ncs.conf);
+	  the app must then pass a credential backend
+	  (runtime_zephyr_connection.creds, ADR-010 D11).
+
+config RUNTIME_MONITOR_NET_CONNECT_TIMEOUT
+	int "Seconds to wait for L4 connectivity before a registration POST"
+	range 1 600
+	default 30
+	help
+	  How long to wait for the network to be up before registering. The
+	  library only waits; bringing the connection up is the application's
+	  job. Also bounds the wait before the boot SNTP sync
+	  (net/time_sync.c), so it runs on every boot. On timeout the SNTP
+	  sync and registration are skipped for this boot and the monitor
+	  starts without a client identity; the dispatcher retries SNTP.
+	  Read in the application build by RUNTIME_ZEPHYR_CONNECTION_INIT
+	  and passed to runtime_zephyr_start(); the library's own value is only
+	  the fallback for a zero net_connect_timeout_s.
+
+config ML_TASK
+	bool "ML heap path: feature extractor + capture task"
+	default n
+	help
+	  Build the whole heap-anomaly path.
+
+	  Default n, and deliberately not part of a customer image: it exports
+	  telemetry rather than alerts, and each window costs an HTTP round
+	  trip.
+
+config ML_DATASET_FLASH
+	bool "Flash-batched dataset capture with chunked upload (ADR-008)"
+	depends on ML_TASK && (FLASH_MAP || FLASH_MAP_CUSTOM)
+	default n
+	help
+	  During ML_PHASE_COLLECT, write finalized feature windows to the
+	  fixed 'ml_dataset' flash partition instead of POSTing each one
+	  to the capture endpoint. The per-window POST's response handling
+	  allocates on modem heaps in contexts the excluded-thread filter
+	  cannot see, which bakes a transport heartbeat into the training
+	  data; a record write is microseconds, static buffers, zero heap
+	  events (ADR-008).
+
+	  Capture stops when the store is full (ML_DATASET_MAX_SAMPLES or
+	  the partition capacity) and the stored dataset is then uploaded
+	  in chunks of ML_DATASET_POST_CHUNK vectors, below dispatcher
+	  priority.
+
+	  The application must declare a 128 KiB 'ml_dataset' partition in
+	  its pm_static.yml (32 x 4 KiB pages, outside the firmware slots);
+	  the build fails without it. Off by default until an application's
+	  flash layout makes that room. The nRF9151 has 1 MB of flash (the
+	  upstream Nordic "LACA" definition and the Thingy:91 X reference
+	  board both tile within 0x100000), so a full 128 KiB corpus requires
+	  shrinking the MCUboot A/B slots; the udp app does this (448 KiB ->
+	  384 KiB each).
+
+# --- Thread Sizing ---
+config MONITOR_WORKQ_STACK_SIZE
+	int "Collector work queue stack size (bytes)"
+	default 1536
+
+config MONITOR_ANALYZER_STACK_SIZE
+	int "Analyzer thread stack size (bytes)"
+	default 2048
+
+config MONITOR_DISPATCHER_STACK_SIZE
+	int "Dispatcher thread stack size (bytes)"
+	default 8192
+
+config MONITOR_WORKQ_PRIORITY
+	int "Collector work queue priority"
+	default 8
+
+config MONITOR_ANALYZER_PRIORITY
+	int "Analyzer thread priority"
+	default 9
+
+config MONITOR_DISPATCHER_PRIORITY
+	int "Dispatcher thread priority"
+	default 11
+
+# --- Stack Overflow Detection ---
+config RUNTIME_MONITOR_STACK_OVERFLOW
+	bool "Stack overflow detection via fatal error hook"
+	default y
+	help
+	  Override Zephyr's weak k_sys_fatal_error_handler to intercept
+	  K_ERR_STACK_CHK_FAIL events — fired by stack canary failures
+	  (-fstack-protector via STACK_CANARIES) or by MPU-detected stack
+	  guard violations when CONFIG_HW_STACK_PROTECTION=y. The handler
+	  best-effort publishes a THREAT_STACK_OVERFLOW alert on the zbus
+	  alert_chan (K_NO_WAIT — fault context cannot block) before
+	  delegating to k_fatal_halt(). Enable when you want the runtime
+	  to surface stack-overrun threats to the dispatcher in addition
+	  to halting the system.
+
+	  This switch only enables the override; it does NOT enable the
+	  canary itself. STACK_CANARIES is a choice symbol inside an
+	  optional Kconfig choice (siblings: STACK_CANARIES_STRONG,
+	  STACK_CANARIES_ALL, STACK_CANARIES_EXPLICIT) so it cannot be
+	  `select`-ed from a parent. The integrator must set one of those
+	  in their .conf and provide entropy
+	  (CONFIG_ENTROPY_GENERATOR=y on a board with HW RNG, or
+	  CONFIG_TEST_RANDOM_GENERATOR=y for QEMU/test builds).
+
+# --- Syscall Hooks (ADR-004) ---
+config RUNTIME_MONITOR_SYSCALL_HOOKS
+	bool "Synchronous syscall interception (ADR-004)"
+	depends on ARM
+	select LLEXT
+	help
+	  Enable --wrap based syscall interception with an LLEXT
+	  hot-loadable hook module.  When enabled, z_impl_k_thread_priority_set
+	  is dispatched through a global vtable that LLEXT modules can patch
+	  at runtime.
+
+	  Cortex-M only. The --wrap link mechanism and EXPORT_SYMBOL plumbing
+	  are cross-arch, but LLEXT module .text lives in RAM — the integrator
+	  must ensure that RAM is executable on their target. See the lib-level
+	  contract described in agent.c (chosen { zephyr,llext-heap }) and the
+	  platform note in docs/platform-stm32l4-llext.md for a worked example.
+
+# exein_dyn.llext has several sources; ELF_OBJECT supports only one.
+choice LLEXT_BINARY_TYPE
+	default LLEXT_TYPE_ELF_RELOCATABLE if RUNTIME_MONITOR_SYSCALL_HOOKS
+endchoice
+
+config ZA_LLEXT_MODULE_BUF_SIZE
+	int "LLEXT module buffer size (bytes)"
+	default 8192
+	depends on RUNTIME_MONITOR_SYSCALL_HOOKS
+	help
+	  Size of the static buffer used to receive LLEXT module binaries
+	  from flash or external sources before loading.
+
+config ZA_LLEXT_FLASH_PERSIST
+	bool "Persist LLEXT modules to flash"
+	depends on RUNTIME_MONITOR_SYSCALL_HOOKS && FLASH_MAP
+	help
+	  When enabled, loaded LLEXT modules are read from (and can be
+	  saved to) the storage_partition in flash, surviving reboots.
+
+config ZA_LLEXT_AUTO_DOWNLOAD
+	bool "Automatically download LLEXT module after monitor startup"
+	depends on RUNTIME_MONITOR_SYSCALL_HOOKS
+	default y
+	help
+	  Queue an HTTP LLEXT download after runtime_zephyr_start() completes.
+	  Samples that prime storage_partition and only want the persisted module
+	  loaded at boot can disable this.
+
+endif # RUNTIME_MONITOR

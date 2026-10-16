@@ -1,0 +1,12 @@
+# Protects nuSIM provisioning data from being overwritten.
+# Region 0xFF8000-0xFFC000 must never be erased or included in firmware images.
+tfm_its:
+  address: 0xf8000
+  size: 0x6000
+tfm_otp_nv_counters:
+  address: 0xfe000
+  size: 0x2000
+tfm_storage:
+  address: 0xf8000
+  size: 0x8000
+  span: [tfm_its, tfm_otp_nv_counters]

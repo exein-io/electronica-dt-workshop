@@ -1,0 +1,25 @@
+[package]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/exein-io/electronica-dt-workshop"
+name = "webflash"
+version = "0.1.0"
+edition = "2021"
+description = "Browser flasher for the nRF9151 DK: probe-rs in WebAssembly over WebUSB (J-Link), nuSIM-safe"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+probe-rs = { version = "=0.32.0", default-features = false, features = ["builtin-targets"] }
+ihex = "3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+
+[patch.crates-io]
+# probe-rs 0.32.0 + a host-provided J-Link USB transport and wasm gates (see README).
+probe-rs = { path = "vendor/probe-rs" }
+
+[profile.release]
+opt-level = "s"
+lto = true

@@ -1,0 +1,129 @@
+name: build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    # Same image as the devcontainer.
+    container: ghcr.io/nrfconnect/sdk-nrf-toolchain:v3.1.0
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: electronica-dt-workshop
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .west
+            nrf
+            nrfxlib
+            zephyr
+            bootloader
+            modules
+            test
+            tools
+          key: west-${{ hashFiles('electronica-dt-workshop/vendor/ncs-nusim-app-ncs-v3.1.0-*.zip') }}
+
+      - name: West workspace
+        run: electronica-dt-workshop/scripts/setup-workspace.sh
+
+      # No secrets in the images: the bootstrap token goes onto each board
+      # as a settings page (web flasher or scripts/settings-hex.py).
+      - name: Build
+        run: |
+          electronica-dt-workshop/scripts/build.sh
+          mkdir -p out
+          cp electronica-dt-workshop/runtime-lte/build/merged.hex out/runtime-lte.hex
+          cp electronica-dt-workshop/runtime-lte/build/dfu_application.zip out/runtime-lte-dfu.zip
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: firmware
+          path: out/
+
+  # Tag vX.Y.Z -> GitHub Release with the images attached.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [firmware, webflash]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: firmware
+      # Web flasher (private, like the release): webflash/serve.sh serves it.
+      - uses: actions/download-artifact@v7
+        with:
+          name: webflash
+          path: wf
+      - run: cp wf/www/index.html wf/target/wasm32-wasip1/release/webflash.wasm .
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" *.hex *.zip index.html webflash.wasm
+          --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+
+  # Same files on GitHub Pages: the web flasher with the release image bundled.
+  pages:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [firmware, webflash]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: firmware
+          path: site
+      - uses: actions/download-artifact@v7
+        with:
+          name: webflash
+          path: wf
+      - run: |
+          cp wf/www/index.html wf/target/wasm32-wasip1/release/webflash.wasm site/
+          printf '{"tag":"%s","file":"runtime-lte.hex"}\n' "$GITHUB_REF_NAME" > site/release.json
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  # Browser flasher: probe-rs (vendored, see webflash/README.md) for wasm32-wasip1.
+  webflash:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup target add wasm32-wasip1
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            webflash/target
+          key: webflash-${{ hashFiles('webflash/Cargo.toml', 'webflash/vendor/probe-rs/Cargo.toml') }}
+      - name: Test (nuSIM guard)
+        working-directory: webflash
+        run: cargo test --release
+      - name: Build
+        working-directory: webflash
+        run: cargo build --release --target wasm32-wasip1
+      - uses: actions/upload-artifact@v6
+        with:
+          name: webflash
+          path: |
+            webflash/www/index.html
+            webflash/target/wasm32-wasip1/release/webflash.wasm

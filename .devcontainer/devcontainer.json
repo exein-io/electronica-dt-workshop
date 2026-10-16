@@ -1,0 +1,33 @@
+// Build environment for VS Code Dev Containers and GitHub Codespaces: Nordic's
+// NCS v3.1.0 toolchain image (the version ncs-nusim-app pins), so nothing but
+// Docker/Podman is needed on the host. The west workspace is the parent
+// folder (/workspaces), set up from the vendored ncs-nusim-app snapshot by
+// scripts/setup-workspace.sh. Build with scripts/build.sh. USB is not passed
+// in: flash from the host or with the web flasher.
+{
+    "name": "electronica-dt-workshop (NCS v3.1.0)",
+    "image": "ghcr.io/nrfconnect/sdk-nrf-toolchain:v3.1.0",
+    "overrideCommand": true,
+    // gh for webflash/serve.sh; sshd for `gh codespace ssh` / `gh codespace cp` from the host.
+    "features": {
+        "ghcr.io/devcontainers/features/github-cli:1": {},
+        "ghcr.io/devcontainers/features/sshd:1": {}
+    },
+    // webflash/serve.sh: private forwarded port (GitHub login), WebUSB runs in your local browser.
+    "forwardPorts": [8765],
+    "portsAttributes": { "8765": { "label": "web flasher", "onAutoForward": "openBrowser" } },
+    // overrideCommand skips the image's entrypoint, so put its toolchain on PATH.
+    "postCreateCommand": "echo '. /opt/toolchain-env.sh' >> ~/.bashrc && scripts/setup-workspace.sh",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "nordic-semiconductor.nrf-connect",
+                "ms-vscode.cpptools"
+            ],
+            "settings": {
+                "terminal.integrated.defaultProfile.linux": "bash",
+                "C_Cpp.default.compileCommands": "${workspaceFolder}/runtime-lte/build/runtime-lte/compile_commands.json"
+            }
+        }
+    }
+}

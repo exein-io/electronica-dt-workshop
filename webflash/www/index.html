@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nRF9151 Web Flasher</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --fg: #1b1f24; --muted: #5b636e; --card: #ffffff; --line: #d9dde3;
+    --accent: #0b6bcb; --accent-fg: #ffffff; --ok: #1a7f37; --warn: #9a6700; --err: #c62828;
+    --log-bg: #0f1419; --log-fg: #d6dde5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1216; --fg: #e6e9ee; --muted: #9aa4b1; --card: #171b21; --line: #2a313a;
+      --accent: #4c9eff; --accent-fg: #0b0f14; --ok: #4ac26b; --warn: #d4a72c; --err: #ff6b6b;
+      --log-bg: #0a0d10; --log-fg: #c9d1d9;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 1rem; margin: 0 0 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line);
+           background: var(--card); color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .status { font-weight: 600; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .err { color: var(--err); }
+  .note { color: var(--muted); font-size: .9rem; margin: 8px 0 0; }
+  .alert { border-left: 4px solid var(--warn); padding: 8px 12px; background: var(--card); margin-bottom: 16px; border-radius: 6px; }
+  progress { width: 100%; height: 14px; }
+  .bar { margin-top: 8px; }
+  .bar label { display: flex; justify-content: space-between; font-size: .85rem; color: var(--muted); }
+  pre { background: var(--log-bg); color: var(--log-fg); padding: 12px; border-radius: 8px; height: 260px;
+        overflow: auto; margin: 0; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>nRF9151 Web Flasher</h1>
+  <p class="sub">Flash the Electronica DT workshop firmware onto an nRF9151 DK straight from the browser:
+    <a href="https://probe.rs">probe-rs</a> compiled to WebAssembly, talking to the DK's onboard J-Link over WebUSB.
+    Nothing to install. Source: <a href="https://github.com/exein-io/electronica-dt-workshop/tree/main/webflash">exein-io/electronica-dt-workshop</a>.</p>
+
+  <div class="alert">
+    <strong>Alternative route.</strong> The supported way to flash is local, with Nordic's tools
+    (<code>west flash</code> / <code>nrfutil</code>, token via <code>scripts/settings-hex.py</code>), see the
+    <a href="https://github.com/exein-io/electronica-dt-workshop#readme">README</a>.
+    This page needs Chrome or Edge 137+ on Linux, macOS or Android. On Windows the SEGGER driver owns the J-Link and WebUSB can't open it.
+  </div>
+
+  <div id="unsupported" class="alert" hidden></div>
+
+  <div class="card">
+    <h2>1. Connect the J-Link</h2>
+    <div class="row">
+      <button id="connect" class="primary">Connect J-Link…</button>
+      <span id="probe" class="status">not connected</span>
+    </div>
+    <p class="note">Close nRF Connect, <code>nrfutil</code>, J-Link tools and any other program using the probe first.</p>
+  </div>
+
+  <div class="card">
+    <h2>2. Flash</h2>
+    <div class="row">
+      <button id="flash-release" class="primary" disabled hidden>Flash release <span id="release-name"></span></button>
+      <button id="flash-file" class="primary" disabled>Flash a .hex file…</button>
+      <input id="file" type="file" accept=".hex" hidden>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label for="token" style="font-weight:600;min-width:170px">Exein Runtime token</label>
+      <input id="token" type="text" autocomplete="off" spellcheck="false" placeholder="optional: bootstrap token for a new board"
+             style="flex:1;min-width:220px;font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)">
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label for="custom-id" style="font-weight:600;min-width:170px">Custom id</label>
+      <input id="custom-id" type="text" autocomplete="off" spellcheck="false" placeholder="optional: default nRF9151-DK_&lt;device id&gt;"
+             style="flex:1;min-width:220px;font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)">
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label for="host" style="font-weight:600;min-width:170px">Platform host</label>
+      <input id="host" type="text" autocomplete="off" spellcheck="false" placeholder="optional: default platform.exein.io (firmware built-in)"
+             style="flex:1;min-width:220px;font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)">
+    </div>
+    <p class="note">If any of these is set, the flasher also writes a settings page at <code>0x80000</code>. Empty fields keep the firmware's
+      own value. The board registers with the token on its next boot (only if it has no identity yet) and then clears it; custom id and host
+      stay until the next flash with settings. Needs runtime-lte firmware that reads the settings page (v0.4.0+); other firmware ignores it.</p>
+    <p class="note">nuSIM safe: the image is refused unless every byte lies below <code>0xF8000</code>
+      (nuSIM storage and its UICR keys are never touched). Only the 4&nbsp;KB sectors the image covers are erased; then everything is verified.</p>
+    <div class="bar"><label><span>Erase</span><span id="p0t"></span></label><progress id="p0" value="0" max="1"></progress></div>
+    <div class="bar"><label><span>Program</span><span id="p1t"></span></label><progress id="p1" value="0" max="1"></progress></div>
+    <div class="bar"><label><span>Verify</span><span id="p2t"></span></label><progress id="p2" value="0" max="1"></progress></div>
+    <p id="result" class="status"></p>
+  </div>
+
+  <div class="card">
+    <h2>3. Register the board (once)</h2>
+    <p class="note" style="margin-top:0">Enter the Exein Runtime <strong>token</strong> in step 2 and flash: the board registers itself
+      with the platform on its next boot (watch it in the serial terminal: <code>registered with the platform; token cleared</code>).
+      A board that already has an identity keeps it and ignores the token.</p>
+  </div>
+
+  <div class="card">
+    <h2>Serial terminal</h2>
+    <div class="row">
+      <button id="term-open">Open serial port…</button>
+      <span id="term-status" class="status">closed</span>
+    </div>
+    <p class="note">The board's UART through the J-Link's virtual COM port (pick the J-Link's <em>first</em> port), 115200 baud.
+      Works while the board runs normally and next to flashing. With runtime-lte you can type AT commands, e.g. <code>AT%XICCID</code>.</p>
+    <pre id="term" style="margin-top:8px"></pre>
+    <div class="row" style="margin-top:8px">
+      <input id="term-in" placeholder="type and press Enter (sent with CR)" disabled
+             style="flex:1;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Log</h2>
+    <div class="row" style="margin-bottom:8px">
+      <label><input id="verbose" type="checkbox"> verbose (probe-rs debug log)</label>
+    </div>
+    <pre id="log"></pre>
+  </div>
+</main>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const logEl = $("log");
+function log(text, cls) {
+  const line = document.createElement("span");
+  if (cls) line.className = cls;
+  line.textContent = text.endsWith("\n") ? text : text + "\n";
+  logEl.append(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// --- Feature checks ---------------------------------------------------------
+const missing = [];
+if (!navigator.usb) missing.push("WebUSB");
+if (typeof WebAssembly.Suspending !== "function" || typeof WebAssembly.promising !== "function")
+  missing.push("WebAssembly JSPI");
+if (missing.length) {
+  const el = $("unsupported");
+  el.hidden = false;
+  el.innerHTML = `<strong>This browser lacks ${missing.join(" and ")}.</strong> Use a current Chrome or Edge (137+).`;
+  $("connect").disabled = true;
+}
+
+// --- Release image bundled next to this page (CI) ----------------------------
+let release = null;
+fetch("release.json").then((r) => (r.ok ? r.json() : null)).then((info) => {
+  if (!info) return;
+  release = info;
+  $("release-name").textContent = info.tag;
+  $("flash-release").hidden = false;
+}).catch(() => {});
+
+// --- J-Link over WebUSB -------------------------------------------------------
+let usb = null; // { device, readEp, writeEp, mps }
+$("connect").onclick = async () => {
+  try {
+    const device = await navigator.usb.requestDevice({ filters: [{ vendorId: 0x1366 }] });
+    await device.open();
+    if (!device.configuration) await device.selectConfiguration(1);
+    let found = null;
+    for (const intf of device.configuration.interfaces)
+      for (const alt of intf.alternates)
+        if (alt.interfaceClass === 0xff && alt.interfaceSubclass === 0xff && alt.interfaceProtocol === 0xff &&
+            alt.endpoints.length === 2 && alt.endpoints.every((e) => e.type === "bulk"))
+          found = { intf: intf.interfaceNumber, alt };
+    if (!found) throw new Error("no J-Link vendor interface on this device");
+    await device.claimInterface(found.intf);
+    const inEp = found.alt.endpoints.find((e) => e.direction === "in");
+    const outEp = found.alt.endpoints.find((e) => e.direction === "out");
+    usb = { device, readEp: inEp.endpointNumber | 0x80, writeEp: outEp.endpointNumber, mps: inEp.packetSize };
+    $("probe").textContent = `${device.productName || "J-Link"} ${device.serialNumber || ""}`;
+    $("probe").className = "status ok";
+    $("flash-release").disabled = !release;
+    $("flash-file").disabled = false;
+    log(`connected: ${device.productName} S/N ${device.serialNumber}, interface ${found.intf}, ` +
+        `EP IN 0x${usb.readEp.toString(16)} / OUT 0x${usb.writeEp.toString(16)}, max packet ${usb.mps}`);
+  } catch (e) {
+    $("probe").textContent = e.message;
+    $("probe").className = "status err";
+    log(`connect failed: ${e.message}`, "err");
+  }
+};
+
+// --- WebAssembly: probe-rs (wasm32-wasip1) with JSPI ----------------------------
+let wasm = null; // { exports, memory, flash }
+const mem = () => wasm.memory.buffer;
+const dv = () => new DataView(mem());
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const withTimeout = (p, ms) =>
+  ms > 0 ? Promise.race([p, sleep(ms).then(() => { throw new Error("timeout"); })]) : p;
+let stderrBuf = "";
+
+const wasi = {
+  random_get(ptr, len) { crypto.getRandomValues(new Uint8Array(mem(), ptr, len)); return 0; },
+  environ_sizes_get(countPtr, sizePtr) { dv().setUint32(countPtr, 0, true); dv().setUint32(sizePtr, 0, true); return 0; },
+  environ_get() { return 0; },
+  clock_time_get(id, _precision, outPtr) {
+    const ns = id === 0 ? BigInt(Date.now()) * 1000000n : BigInt(Math.round(performance.now() * 1e6));
+    dv().setBigUint64(outPtr, ns, true);
+    return 0;
+  },
+  fd_write(fd, iovs, iovsLen, nwrittenPtr) {
+    let n = 0, text = "";
+    for (let i = 0; i < iovsLen; i++) {
+      const ptr = dv().getUint32(iovs + i * 8, true), len = dv().getUint32(iovs + i * 8 + 4, true);
+      text += new TextDecoder().decode(new Uint8Array(mem(), ptr, len));
+      n += len;
+    }
+    stderrBuf += text;
+    let nl;
+    while ((nl = stderrBuf.indexOf("\n")) >= 0) {
+      const line = stderrBuf.slice(0, nl);
+      stderrBuf = stderrBuf.slice(nl + 1);
+      log(line, /ERROR/.test(line) ? "err" : /WARN/.test(line) ? "warn" : undefined);
+    }
+    dv().setUint32(nwrittenPtr, n, true);
+    return 0;
+  },
+  // Only clock subscriptions (std::thread::sleep). Short sleeps busy-wait;
+  // longer ones suspend the wasm stack (JSPI) so the page stays responsive.
+  poll_oneoff: new WebAssembly.Suspending(async (inPtr, outPtr, nsubs, neventsPtr) => {
+    let ms = 0;
+    for (let i = 0; i < nsubs; i++) {
+      const s = inPtr + i * 48;
+      if (dv().getUint8(s + 8) === 0) ms = Math.max(ms, Number(dv().getBigUint64(s + 24, true)) / 1e6);
+    }
+    if (ms > 2) await sleep(ms);
+    else { const end = performance.now() + ms; while (performance.now() < end); }
+    for (let i = 0; i < nsubs; i++) {
+      const s = inPtr + i * 48, e = outPtr + i * 32;
+      dv().setBigUint64(e, dv().getBigUint64(s, true), true); // userdata
+      dv().setUint16(e + 8, 0, true);                         // errno
+      dv().setUint8(e + 10, dv().getUint8(s + 8));            // type
+    }
+    dv().setUint32(neventsPtr, nsubs, true);
+    return 0;
+  }),
+  sched_yield() { return 0; },
+  proc_exit(code) { throw new Error(`wasm exited with code ${code}`); },
+};
+
+const webusb = {
+  // Same contract as probe-rs' native usb_util: read rounded up to max packet
+  // size, error if the device sends more than asked. -2 = timeout, -1 = error.
+  bulk_out: new WebAssembly.Suspending(async (ep, ptr, len, timeoutMs) => {
+    const data = new Uint8Array(mem(), ptr, len).slice();
+    try {
+      const r = await withTimeout(usb.device.transferOut(ep & 0x0f, data), timeoutMs);
+      return r.status === "ok" ? r.bytesWritten : -1;
+    } catch (e) { log(`USB OUT: ${e.message}`, "err"); return e.message === "timeout" ? -2 : -1; }
+  }),
+  bulk_in: new WebAssembly.Suspending(async (ep, ptr, len, timeoutMs) => {
+    const req = Math.ceil(len / usb.mps) * usb.mps;
+    try {
+      const r = await withTimeout(usb.device.transferIn(ep & 0x0f, req), timeoutMs);
+      if (r.status !== "ok") return -1;
+      const got = new Uint8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength);
+      if (got.length > len) { log(`USB IN: device sent ${got.length} bytes, expected <= ${len}`, "err"); return -1; }
+      new Uint8Array(mem(), ptr, got.length).set(got);
+      return got.length;
+    } catch (e) { log(`USB IN: ${e.message}`, "err"); return e.message === "timeout" ? -2 : -1; }
+  }),
+  progress(kind, done, total) {
+    const bar = $("p" + kind);
+    bar.max = Math.max(total, 1);
+    bar.value = done;
+    $("p" + kind + "t").textContent = total ? `${Math.round((100 * done) / total)} %` : "";
+  },
+};
+
+async function loadWasm() {
+  if (wasm) return wasm;
+  log("loading probe-rs (WebAssembly)…");
+  const { instance } = await WebAssembly.instantiateStreaming(fetch("webflash.wasm"),
+    { wasi_snapshot_preview1: wasi, webusb });
+  wasm = { exports: instance.exports, memory: instance.exports.memory,
+           flash: WebAssembly.promising(instance.exports.flash) };
+  return wasm;
+}
+
+// --- Flash ----------------------------------------------------------------------
+async function flash(bytes, name) {
+  const buttons = [$("connect"), $("flash-release"), $("flash-file")];
+  buttons.forEach((b) => (b.disabled = true));
+  [0, 1, 2].forEach((k) => { $("p" + k).value = 0; $("p" + k + "t").textContent = ""; });
+  $("result").textContent = "flashing… do not unplug the board";
+  $("result").className = "status warn";
+  try {
+    const w = await loadWasm();
+    log(`flashing ${name} (${bytes.length} bytes)`);
+    const ptr = w.exports.alloc(bytes.length);
+    new Uint8Array(mem(), ptr, bytes.length).set(bytes);
+    const put = (id) => {
+      const b = new TextEncoder().encode($(id).value.trim());
+      const p = b.length ? w.exports.alloc(b.length) : 0;
+      if (b.length) new Uint8Array(mem(), p, b.length).set(b);
+      return [p, b.length];
+    };
+    const [tptr, tlen] = put("token"), [cptr, clen] = put("custom-id"), [hptr, hlen] = put("host");
+    const serial = new TextEncoder().encode(usb.device.serialNumber || "");
+    const sptr = w.exports.alloc(serial.length);
+    new Uint8Array(mem(), sptr, serial.length).set(serial);
+    const t0 = performance.now();
+    const rc = await w.flash(ptr, bytes.length, usb.device.vendorId, usb.device.productId,
+                             sptr, serial.length, tptr, tlen, cptr, clen, hptr, hlen, usb.readEp, usb.writeEp, usb.mps, $("verbose").checked ? 1 : 0);
+    if (rc !== 0) {
+      const msg = new TextDecoder().decode(new Uint8Array(mem(), w.exports.last_error_ptr(), w.exports.last_error_len()));
+      throw new Error(msg);
+    }
+    const s = ((performance.now() - t0) / 1000).toFixed(1);
+    $("result").textContent = `done in ${s} s: flashed, verified and reset`;
+    $("result").className = "status ok";
+    log(`done in ${s} s`, "ok");
+  } catch (e) {
+    $("result").textContent = `failed: ${e.message}`;
+    $("result").className = "status err";
+    log(`failed: ${e.message}`, "err");
+    // A failed run can leave the wasm instance mid-call; start fresh next time.
+    wasm = null;
+  } finally {
+    $("connect").disabled = false;
+    $("flash-release").disabled = !release || !usb;
+    $("flash-file").disabled = !usb;
+  }
+}
+
+$("flash-release").onclick = async () => {
+  const r = await fetch(release.file);
+  flash(new Uint8Array(await r.arrayBuffer()), `${release.tag} ${release.file}`);
+};
+$("flash-file").onclick = () => $("file").click();
+$("file").onchange = async (ev) => {
+  const f = ev.target.files[0];
+  ev.target.value = "";
+  if (f) flash(new Uint8Array(await f.arrayBuffer()), f.name);
+};
+
+// --- Serial terminal (Web Serial, J-Link VCOM) ---------------------------------------
+let term = null; // { port, writer }
+const termEl = $("term");
+function termWrite(text) {
+  termEl.append(text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\r/g, ""));
+  if (termEl.textContent.length > 200000) termEl.textContent = termEl.textContent.slice(-150000);
+  termEl.scrollTop = termEl.scrollHeight;
+}
+if (!navigator.serial) {
+  $("term-open").disabled = true;
+  $("term-status").textContent = "Web Serial not available in this browser";
+}
+$("term-open").onclick = async () => {
+  if (term) { try { await term.port.close(); } catch {} return; }
+  try {
+    const port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x1366 }] });
+    await port.open({ baudRate: 115200 });
+    await port.setSignals({ dataTerminalReady: true }); // the J-Link only forwards with DTR set
+    term = { port, writer: port.writable.getWriter() };
+    $("term-status").textContent = "open";
+    $("term-status").className = "status ok";
+    $("term-open").textContent = "Close";
+    $("term-in").disabled = false;
+    const reader = port.readable.getReader();
+    const dec = new TextDecoder();
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        termWrite(dec.decode(value, { stream: true }));
+      }
+    } catch (e) {
+      termWrite(`\n[serial: ${e.message}]\n`);
+    } finally {
+      reader.releaseLock();
+      try { term.writer.releaseLock(); } catch {}
+      try { await port.close(); } catch {}
+      term = null;
+      $("term-status").textContent = "closed";
+      $("term-status").className = "status";
+      $("term-open").textContent = "Open serial port…";
+      $("term-in").disabled = true;
+    }
+  } catch (e) {
+    $("term-status").textContent = e.message;
+    $("term-status").className = "status err";
+  }
+};
+$("term-in").onkeydown = async (ev) => {
+  if (ev.key !== "Enter" || !term) return;
+  const line = ev.target.value;
+  ev.target.value = "";
+  termWrite(`> ${line}\n`);
+  await term.writer.write(new TextEncoder().encode(line + "\r"));
+};
+</script>
+</body>
+</html>

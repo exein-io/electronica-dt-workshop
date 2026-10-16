@@ -1,0 +1,23 @@
+# Copyright (c) 2026 Exein
+# SPDX-License-Identifier: Apache-2.0
+
+name: runtime-zephyr
+build:
+  cmake: .
+  kconfig: Kconfig
+  depends:
+    - nanopb
+    - mbedtls
+ 
+  settings:
+    dts_root: .
+# Precompiled monitor library (blob delivery): scripts/package_blob.sh writes
+# this entry, with the blob's real path and sha256, into the delivered module.
+blobs:
+  - path: cortex-m33-tfm/libruntime_zephyr.a
+    sha256: "3de0328cc089ca1566a57319e4eb9884a26d58a8ecf0432f3f139f36c2883f25"
+    type: lib
+    version: "ec8d57d-dirty"
+    license-path: LICENSE
+    url: file://cortex-m33-tfm/libruntime_zephyr.a
+    description: "Exein runtime security monitor for Zephyr (cortex-m33-tfm, precompiled)"

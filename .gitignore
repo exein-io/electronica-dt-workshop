@@ -1,0 +1,9 @@
+*.rpm
+*.pdf
+build/
+dist/
+# Device-specific nuSIM credentials: never commit.
+backup/*.hex
+.claude/settings.local.json
+__pycache__/
+.vscode/
