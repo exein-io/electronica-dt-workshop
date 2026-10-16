@@ -7,7 +7,7 @@
 //! wasm stack pauses until the transfer's promise settles.
 //!
 //! nuSIM safety: the image is parsed here and refused unless every byte lies
-//! in 0x0..0xF8000. The nuSIM lives in TF-M ITS at 0xF8000..0x100000 and its
+//! in 0x0..0xF8000. The nuSIM lives in TF-M storage at 0xF8000..0x100000 and its
 //! keys in UICR (0xFF8000), which only an ERASEALL can clear; probe-rs is
 //! attached without the erase-all permission and erases 4 KB sectors only.
 

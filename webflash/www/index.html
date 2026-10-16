@@ -33,6 +33,7 @@
   .status { font-weight: 600; }
   .ok { color: var(--ok); } .warn { color: var(--warn); } .err { color: var(--err); }
   .note { color: var(--muted); font-size: .9rem; margin: 8px 0 0; }
+  .note.warn { color: var(--warn); }
   .alert { border-left: 4px solid var(--warn); padding: 8px 12px; background: var(--card); margin-bottom: 16px; border-radius: 6px; }
   progress { width: 100%; height: 14px; }
   .bar { margin-top: 8px; }
@@ -81,9 +82,11 @@
     </div>
     <div class="row" style="margin-top:8px">
       <label for="token" style="font-weight:600;min-width:170px">Exein Runtime token</label>
-      <input id="token" type="text" autocomplete="off" spellcheck="false" placeholder="optional: bootstrap token for a new board"
+      <input id="token" type="text" autocomplete="off" spellcheck="false" placeholder="required the first time: bootstrap token from runtime.exein.io"
              style="flex:1;min-width:220px;font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)">
     </div>
+    <p id="token-warn" class="note warn">No token: fine for reflashing a board that is already registered.
+      A new board needs one, otherwise it can't register and no incidents reach the platform.</p>
     <div class="row" style="margin-top:8px">
       <label for="custom-id" style="font-weight:600;min-width:170px">Custom id</label>
       <input id="custom-id" type="text" autocomplete="off" spellcheck="false" placeholder="optional: default nRF9151-DK_&lt;device id&gt;"
@@ -170,6 +173,8 @@ fetch("release.json").then((r) => (r.ok ? r.json() : null)).then((info) => {
   $("img-release").checked = true; // the bundled release is the default
   updateFlash();
 }).catch(() => {});
+
+$("token").oninput = () => ($("token-warn").hidden = $("token").value.trim() !== "");
 
 // --- Image choice: the bundled release or an own .hex ------------------------
 let picked = null; // File

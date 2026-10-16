@@ -1,5 +1,6 @@
-# Protects nuSIM provisioning data from being overwritten.
-# Region 0xFF8000-0xFFC000 must never be erased or included in firmware images.
+# TF-M storage at the end of flash, matching the factory nuSIM layout:
+# ITS 0xF8000-0xFDFFF holds the nuSIM, NV counters 0xFE000-0xFFFFF. Nothing
+# at or above 0xF8000 (nor UICR at 0xFF8000) may be erased or in an image.
 tfm_its:
   address: 0xf8000
   size: 0x6000

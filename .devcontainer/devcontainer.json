@@ -8,9 +8,8 @@
     "name": "electronica-dt-workshop (NCS v3.1.0)",
     "image": "ghcr.io/nrfconnect/sdk-nrf-toolchain:v3.1.0",
     "overrideCommand": true,
-    // gh for webflash/serve.sh; sshd for `gh codespace ssh` / `gh codespace cp` from the host.
+    // sshd for `gh codespace ssh` / `gh codespace cp` from the host.
     "features": {
-        "ghcr.io/devcontainers/features/github-cli:1": {},
         "ghcr.io/devcontainers/features/sshd:1": {}
     },
     // webflash/serve.sh: private forwarded port (GitHub login), WebUSB runs in your local browser.

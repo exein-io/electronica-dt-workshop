@@ -4,7 +4,7 @@ An alternative to flashing with Nordic's tools. [probe-rs](https://probe.rs) com
 
 **Live:** https://exein-io.github.io/electronica-dt-workshop/ — CI publishes it on GitHub Pages for each `v*` tag, with that release's `workshop.hex` bundled (or pick your own `.hex`). The same `index.html` and `webflash.wasm` are attached to the release.
 
-To serve it yourself (needs `gh`):
+To serve it yourself:
 ```bash
 webflash/serve.sh                                     # latest release → http://localhost:8765
 HEX=app/build/merged.hex webflash/serve.sh    # your own build
@@ -25,7 +25,7 @@ In the devcontainer on GitHub Codespaces, port 8765 is forwarded privately (behi
 
 ## nuSIM safety
 
-- `src/lib.rs` parses the image and **refuses any byte at or above `0xF8000`**. That covers the nuSIM (TF-M ITS at `0xF8000–0x100000`) and the UICR (`0xFF8000`), which holds the keys the ITS is encrypted with. Unit test: `cargo test`.
+- `src/lib.rs` parses the image and **refuses any byte at or above `0xF8000`**. That covers the nuSIM (TF-M storage `0xF8000–0xFFFFF`, ITS at `0xF8000–0xFDFFF`) and the UICR (`0xFF8000`), which holds the keys the ITS is encrypted with. Unit test: `cargo test`.
 - probe-rs is attached without the erase-all permission, so it refuses ERASEALL (the only way to clear UICR on nRF91) instead of running it. It erases only the 4 KB sectors the image covers, then verifies.
 - Tested on the workshop DK: a release image flashed from the browser; afterwards ICCID, `%XSIM: 1` and LTE registration were unchanged.
 
@@ -44,7 +44,7 @@ probe-rs is synchronous and WebUSB is async. JSPI (`WebAssembly.Suspending` / `p
 
 ## Vendored probe-rs
 
-`vendor/probe-rs` is probe-rs **0.32.0** from crates.io. The git history has two commits: the unmodified copy, then our changes. `git show` of the second one is the patch to propose upstream:
+`vendor/probe-rs` is probe-rs **0.32.0** from crates.io with a small change set, meant for upstream (diff it against the crates.io 0.32.0 sources to get the patch):
 
 - `JLink::from_transport()`: build a J-Link probe from an already opened USB interface (any `InterfaceExt` implementation). `JLinkFactory::open()` uses it with nusb; here the page provides WebUSB.
 - `cfg(target_family = "wasm")` gates: only the J-Link driver is compiled (the other probe drivers need serial ports, hidapi or blocking nusb), no USB enumeration, and no WCH-Link chip detection. `async-io` and `serialport` are native-only dependencies, and nusb goes from 0.2.1 to 0.2.7 (which has a WebUSB backend).
@@ -64,7 +64,7 @@ python3 -m http.server -d /tmp/site 8765                # WebUSB needs a secure 
 
 ## Settings: token, custom id, platform host
 
-The page has three optional fields: **Exein Runtime token**, **Custom id** and **Platform host**. If any is set, it also writes a **settings page** at `0x80000` (start of the unused MCUboot secondary slot): `"EXEINCFG"`, then token, custom id and host as NUL-terminated strings (empty = keep the firmware's value). The signed app image can't carry them, because MCUboot checks its signature on every boot.
+The page has three fields: **Exein Runtime token** (required the first time a board is flashed, so it can register; the page warns while it is empty), **Custom id** and **Platform host** (both optional). If any is set, it also writes a **settings page** at `0x80000` (start of the unused MCUboot secondary slot): `"EXEINCFG"`, then token, custom id and host as NUL-terminated strings (empty = keep the firmware's value). The signed app image can't carry them, because MCUboot checks its signature on every boot.
 
 The workshop firmware reads that page on every boot:
 - **Custom id:** sent in SystemInfo instead of the default `nRF9151-DK_<device id>`.
@@ -74,7 +74,7 @@ The workshop firmware reads that page on every boot:
 
 Flashing again without any field set leaves the page as it is; flashing with settings replaces it.
 
-**Tested end to end on prod (2026-10-13):** a release hex + token from this page; the board registered with platform.exein.io, and Button 2 produced a HEAP_LOW record accepted 5.7 s after the press. Before runtime-platform#1539 reached prod, `/register` failed on-device with `-122` (EMSGSIZE).
+**Tested end to end on prod (2026-10-13):** a release hex + token from this page; the board registered with platform.exein.io, and Button 2 produced a HEAP_LOW record accepted 5.7 s after the press.
 
 ## Serial terminal
 

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Fail if an Intel hex writes the nuSIM / TF-M ITS region 0xF8000-0xFFFFF.
+"""Fail if an Intel hex writes anything at or above 0xF8000.
 
-Flashing such an image destroys the nuSIM credentials (see README).
+That is TF-M storage (0xF8000-0xFFFFF, the nuSIM lives in its ITS) and UICR
+(0xFF8000, the keys the ITS is encrypted with); flashing there destroys the
+nuSIM (see README). Same rule as the web flasher.
 Usage: scripts/check-nusim-hex.py build/merged.hex [...]
 """
 import sys
 
-LO, HI = 0xF8000, 0x100000
+LO = 0xF8000
 
 
 def bad_records(path):
@@ -22,7 +24,7 @@ def bad_records(path):
             base = int(raw[8:12], 16) << 4
         elif rt == 0:                     # data
             a = base + int(raw[2:6], 16)
-            bad += a < HI and a + int(raw[0:2], 16) > LO
+            bad += a + int(raw[0:2], 16) > LO
     return bad
 
 
@@ -30,6 +32,6 @@ if __name__ == "__main__":
     failed = False
     for path in sys.argv[1:]:
         n = bad_records(path)
-        print(f"{path}: " + (f"DANGER, {n} record(s) in nuSIM region" if n else "SAFE"))
+        print(f"{path}: " + (f"DANGER, {n} record(s) at or above 0xF8000 (nuSIM)" if n else "SAFE"))
         failed |= n > 0
     sys.exit(failed)
