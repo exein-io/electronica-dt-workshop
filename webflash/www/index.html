@@ -384,7 +384,7 @@ async function flash(bytes, name) {
       throw new Error(msg);
     }
     const s = ((performance.now() - t0) / 1000).toFixed(1);
-    $("result").textContent = `done in ${s} s: flashed, verified and reset`;
+    $("result").textContent = `done in ${s} s: flashed and verified (the log says if the reset needs the RESET button)`;
     $("result").className = "status ok";
     log(`done in ${s} s`, "ok");
   } catch (e) {

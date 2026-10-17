@@ -39,8 +39,9 @@ const BACKUP_LEN: usize = 0x8000;
 /// ERASEALL that destroys the nuSIM. So MCUboot is only rewritten when it
 /// changed, and then last, after the app was flashed and verified.
 const BOOT_END: u32 = 0x10000;
-/// SWD clock; probe-rs' default for J-Link is far slower.
-const SWD_KHZ: u32 = 4000;
+/// SWD clocks to try, fastest first; probe-rs' default for J-Link is far slower.
+/// The nRF9151 DK's J-Link OB reports a 1 MHz base clock and refuses 4 MHz.
+const SWD_KHZ: [u32; 2] = [4000, 1000];
 
 #[link(wasm_import_module = "webusb")]
 extern "C" {
@@ -196,8 +197,9 @@ fn flash_image(hex: &str, cfg: Option<Vec<u8>>, backup: bool, vid: u16, pid: u16
     let jlink = JLink::from_transport(Box::new(WebUsb), read_ep, write_ep, max_packet, &selector)
         .map_err(|e| format!("J-Link: {e}"))?;
     let mut probe = Probe::from_specific_probe(jlink);
-    if let Err(e) = probe.set_speed(SWD_KHZ) {
-        tracing::warn!("could not set SWD speed to {SWD_KHZ} kHz: {e}");
+    match SWD_KHZ.iter().find_map(|&k| probe.set_speed(k).ok()) {
+        Some(k) => tracing::info!("SWD clock {k} kHz"),
+        None => tracing::warn!("could not set the SWD clock; probe default"),
     }
     // Permissions::new() = no erase-all: probe-rs refuses ERASEALL instead of wiping UICR.
     let mut session = probe.attach(CHIP, Permissions::new()).map_err(|e| format!(
@@ -259,7 +261,10 @@ fn flash_image(hex: &str, cfg: Option<Vec<u8>>, backup: bool, vid: u16, pid: u16
     }
     tracing::info!("flashed and verified; resetting");
 
-    session.core(0).and_then(|mut c| c.reset()).map_err(|e| format!("reset: {e}"))?;
+    // The image is verified at this point: a failed reset is not a failed flash.
+    if let Err(e) = session.core(0).and_then(|mut c| c.reset()) {
+        tracing::warn!("reset failed ({e}): press RESET on the board (or power-cycle it) to start the new firmware");
+    }
     Ok(())
 }
 
