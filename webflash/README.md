@@ -13,7 +13,7 @@ In the devcontainer on GitHub Codespaces, port 8765 is forwarded privately (behi
 
 ## Requirements
 
-- Chrome or Edge **137+** (WebUSB + WebAssembly JSPI) on **Linux, macOS or Android** (phone with USB OTG). **Not on Windows:** Chrome there can open the J-Link (WinUSB), but a flash failed mid-erase and left a nuSIM board without bootloader and locked; the page refuses Windows until that is understood on a board without nuSIM. Use `nrfutil` there (README).
+- Chrome or Edge **137+** (WebUSB + WebAssembly JSPI) on **Linux, macOS, Windows or Android** (phone with USB OTG). Windows (WinUSB) is tested on one machine; there a flash once failed mid-erase (2026-10-16, before MCUboot was protected), not reproduced since v1.1.3.
 - Close nRF Connect, `nrfutil`, J-Link tools and anything else using the probe: only one program can hold it.
 - Linux: your user needs access to the J-Link USB device (same udev setup as [probe-rs](https://probe.rs/docs/getting-started/probe-setup/)).
 

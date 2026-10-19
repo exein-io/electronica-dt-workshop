@@ -6,7 +6,7 @@ A joint workshop by [Exein](https://www.exein.io) and [Deutsche Telekom IoT](htt
 Button 2 ─▶ heap burst ─▶ HEAP_LOW policy ─▶ POST /zephyr/threats (modem TLS, LTE-M) ─▶ incident
 ```
 
-**Try it from your browser:** [**exein-io.github.io/electronica-dt-workshop**](https://exein-io.github.io/electronica-dt-workshop/) flashes the latest release onto the DK over USB (Chrome/Edge on Linux, macOS or Android, nothing to install, nuSIM-safe; not on Windows), with a serial terminal and the registration token field. On Windows, or without the browser: [Flash a release with nrfutil](#b-with-nrfutil-windows-macos-linux).
+**Try it from your browser:** [**exein-io.github.io/electronica-dt-workshop**](https://exein-io.github.io/electronica-dt-workshop/) flashes the latest release onto the DK over USB (Chrome/Edge on Linux, macOS, Windows or Android, nothing to install, nuSIM-safe), with a serial terminal and the registration token field. Without the browser: [Flash a release with nrfutil](#b-with-nrfutil-windows-macos-linux).
 
 ---
 
@@ -55,7 +55,7 @@ This happened on 2026-10-16 (web flasher on Windows, a USB transfer failed mid-e
 So:
 - **If a flash fails: don't unplug, power off or reset the board. Flash again immediately.**
 - **A backup (e.g. `nrfutil device dump-to-file`) only helps while UICR is intact:** it repairs an overwritten nuSIM region (the 2026-09-11 case), not a recover.
-- The web flasher (v1.1.0+) never leaves the board without MCUboot: unchanged MCUboot is skipped, a changed one is written last, and each part is retried within the session. It refuses Windows.
+- The web flasher (v1.1.0+) never leaves the board without MCUboot: unchanged MCUboot is skipped, a changed one is written last, and each part is retried within the session. Since v1.1.3 it also runs on Windows (tested on one machine; the 2026-10-16 failure was not reproduced).
 
 ---
 
@@ -96,13 +96,13 @@ On a flaky connection: `git config --global http.version HTTP/1.1`.
 
 Every release has `workshop.hex` (the firmware) on the [Releases page](https://github.com/exein-io/electronica-dt-workshop/releases/latest). A **new board also needs its Exein Runtime token** (the bootstrap token from runtime.exein.io) once, as a small settings page next to the firmware; the board registers itself on its next boot. Reflashing a registered board needs no token.
 
-### A. From the browser (Linux, macOS, Android)
+### A. From the browser (Linux, macOS, Windows, Android)
 
 Open **https://exein-io.github.io/electronica-dt-workshop/** in Chrome or Edge, connect the J-Link, enter the token (first time), click **Flash**. Nothing to install. Details: [`webflash/`](webflash/README.md).
 
 ### B. With nrfutil (Windows, macOS, Linux)
 
-Use this on Windows (the web flasher refuses Windows: a flash there failed halfway and locked a board) or whenever you prefer Nordic's tools. **Never** use nRF Connect for Desktop's Programmer or Quick Start: they erase the whole chip and destroy the nuSIM.
+Use this whenever you prefer Nordic's tools or can't use Chrome/Edge. **Never** use nRF Connect for Desktop's Programmer or Quick Start: they erase the whole chip and destroy the nuSIM.
 
 1. Install the [SEGGER J-Link Software](https://www.segger.com/downloads/jlink/) (≥ V9.52), [nRF Util](https://www.nordicsemi.com/Products/Development-tools/nRF-Util) and Python 3, then run `nrfutil install device`.
 2. Get this repo (`git clone https://github.com/exein-io/electronica-dt-workshop`, or **Code → Download ZIP**) and `workshop.hex` from the [latest release](https://github.com/exein-io/electronica-dt-workshop/releases/latest) into the repo folder.

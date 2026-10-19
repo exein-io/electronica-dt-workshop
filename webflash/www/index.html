@@ -52,8 +52,9 @@
     Nothing to install. Source: <a href="https://github.com/exein-io/electronica-dt-workshop/tree/main/webflash">exein-io/electronica-dt-workshop</a>.</p>
 
   <div class="alert">
-    This page needs Chrome or Edge 137+ on Linux, macOS or Android. <strong>Not on Windows yet</strong> (a flash failed halfway there):
-    flash with Nordic's <code>nrfutil</code> instead, step by step in the
+    This page needs Chrome or Edge 137+ on Linux, macOS, Windows or Android. Windows is tested on one machine so far.
+    <strong>If flashing fails: don't unplug or reset the board, click Flash again.</strong>
+    Prefer Nordic's tools? <code>nrfutil</code>, step by step in the
     <a href="https://github.com/exein-io/electronica-dt-workshop#b-with-nrfutil-windows-macos-linux">README</a>.
   </div>
 
@@ -166,24 +167,6 @@ if (missing.length) {
   el.innerHTML = `<strong>This browser lacks ${missing.join(" and ")}.</strong> Use a current Chrome or Edge (137+).`;
   $("connect").disabled = true;
 }
-// Windows: WebUSB may open the J-Link, but a flash failed there mid-erase and
-// left a DK without bootloader and locked (nuSIM lost). Until that is
-// understood (on a board without nuSIM), Windows uses nrfutil.
-if ((navigator.userAgentData?.platform || navigator.platform || "").startsWith("Win")) {
-  const el = $("unsupported");
-  el.hidden = false;
-  el.innerHTML = `<strong>Windows is not supported yet:</strong> a flash over WebUSB failed halfway there and locked the board.
-    Flash with Nordic's <code>nrfutil</code>, step by step in the
-    <a href="https://github.com/exein-io/electronica-dt-workshop#b-with-nrfutil-windows-macos-linux">README</a>.
-    <br><label><input id="win-debug" type="checkbox"> I know this failed before, I want to debug it on Windows
-    (only on a board whose nuSIM I can afford to lose; turns on the verbose log)</label>`;
-  $("connect").disabled = true;
-  $("win-debug").onchange = (ev) => {
-    $("connect").disabled = !ev.target.checked || missing.length > 0;
-    if (ev.target.checked) $("verbose").checked = true;
-  };
-}
-
 // --- Release image bundled next to this page (CI) ----------------------------
 let release = null;
 fetch("release.json").then((r) => (r.ok ? r.json() : null)).then((info) => {
