@@ -28,6 +28,13 @@
 
 LOG_MODULE_REGISTER(app, LOG_LEVEL_INF);
 
+/* The blob's kernel objects (heap_msgq: 52 bytes) are laid out for the kernel
+ * config it was built with, CONFIG_ASSERT=y among it (SPIN_VALIDATE grows
+ * struct k_spinlock). A mismatch links fine and faults at runtime.
+ */
+BUILD_ASSERT(sizeof(struct k_msgq) == 52,
+	     "struct k_msgq differs from the runtime-zephyr blob: set CONFIG_ASSERT=y");
+
 /* ponytail: fixed modem sec_tag, make it a Kconfig if another app shares the modem. */
 #define SEC_TAG 4242
 
