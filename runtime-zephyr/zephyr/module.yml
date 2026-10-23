@@ -15,7 +15,7 @@ build:
 # this entry, with the blob's real path and sha256, into the delivered module.
 blobs:
   - path: cortex-m33-tfm/libruntime_zephyr.a
-    sha256: "3de0328cc089ca1566a57319e4eb9884a26d58a8ecf0432f3f139f36c2883f25"
+    sha256: "7c62568ebae8f413f9f32daa35d506733b8aabbe0b7ba01388201ca765e397da"
     type: lib
     version: "ec8d57d-dirty"
     license-path: LICENSE
