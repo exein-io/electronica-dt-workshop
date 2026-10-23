@@ -1,9 +1,10 @@
 # Electronica DT workshop: heap exhaustion on nRF9151 + nuSIM
 
-A joint workshop by [Exein](https://www.exein.io) and [Deutsche Telekom IoT](https://iot.telekom.com) at Electronica. The Exein Runtime Security Monitor runs on a Nordic nRF9151 DK with Deutsche Telekom's integrated [nuSIM](https://iot.telekom.com/global/iot-connectivity/isim). Press **Button 2**, the device burst-allocates past 60% of its heap, the monitor reports `heap_low` over LTE, and a **Heap Exhaustion** incident shows up on [runtime.exein.io](https://runtime.exein.io).
+A joint workshop by [Exein](https://www.exein.io) and [Deutsche Telekom IoT](https://iot.telekom.com) at Electronica. The Exein Runtime Security Monitor runs on a Nordic nRF9151 DK with Deutsche Telekom's integrated [nuSIM](https://iot.telekom.com/global/iot-connectivity/isim). Each of the four buttons triggers one incident type: the monitor reports it over LTE, and the incident shows up on [runtime.exein.io](https://runtime.exein.io) (**Log Event**, **Heap Exhaustion**, **Free Stack Below Critical Threshold**, **Memory Leak**).
 
 ```
-Button 2 ─▶ heap burst ─▶ HEAP_LOW policy ─▶ POST /zephyr/threats (modem TLS, LTE-M) ─▶ incident
+Button 1-4 ─▶ error log / heap burst / deep stack / slow leak ─▶ LOG / HEAP_LOW / STACK_LOW / MEM_LEAK policy
+          ─▶ POST /zephyr/threats (modem TLS, LTE-M) ─▶ incident
 ```
 
 **Try it from your browser:** [**exein-io.github.io/electronica-dt-workshop**](https://exein-io.github.io/electronica-dt-workshop/) flashes the latest release onto the DK over USB (Chrome/Edge on Linux, macOS, Windows or Android, nothing to install, nuSIM-safe), with a serial terminal and the registration token field. Without the browser: [Flash a release with nrfutil](#b-with-nrfutil-windows-macos-linux).
@@ -115,7 +116,7 @@ Use this whenever you prefer Nordic's tools or can't use Chrome/Edge. **Never** 
    nrfutil device reset
    ```
    `ERASE_RANGES_TOUCHED_BY_FIRMWARE` is mandatory: never a full erase. With several boards connected, add `--serial-number <J-Link S/N>` (`nrfutil device list`).
-4. Watch the log in a serial terminal that asserts DTR (115200 baud, the J-Link's first COM port / tty; e.g. PuTTY, or `python3 -m serial.tools.miniterm --dtr 1 <port> 115200`): a new board logs `registered with the platform; token cleared`, then press **Button 2**.
+4. Watch the log in a serial terminal that asserts DTR (115200 baud, the J-Link's first COM port / tty; e.g. PuTTY, or `python3 -m serial.tools.miniterm --dtr 1 <port> 115200`): a new board logs `registered with the platform; token cleared`, then press the buttons (see *Run the demo*).
 
 `settings.hex` is the same settings page the web flasher writes (`0x80000`). The board clears the token after one registration attempt; a board that already has an identity ignores it, so reflashing never creates a new agent.
 
@@ -146,17 +147,19 @@ net: L4 connected                                   ← LTE up (LED1 solid; blin
 time_sync: wall clock set from pool.ntp.org
 registration: client identity present in the credential store
 heartbeat: sending system info … POST status 204
-workload: Press Button 2 for a heap exhaustion (HEAP_LOW) incident
+workload: Buttons: 1 Log Event, 2 Heap Exhaustion, 3 Stack Overflow Risk, 4 Memory Leak
 ```
 
-Press **Button 2** (nothing else running in between):
-```
-workload: BTN2: burst-allocated 24 x 512 B (expect HEAP_LOW)
-dispatcher: POST 1 record(s) … POST status 204
-```
-→ runtime.exein.io: **Heap Exhaustion**, severity high, "heap used 12 kB, threshold 10 kB" (60% of the 16 KB heap = 9831 B).
+Press one button at a time and wait for its incident before the next one; violations in the same 5 s reporting interval are grouped into one incident.
 
-**Platform support (2026-10):** `/zephyr/threats` accepts only `heap_low`. Every other finding (`heap_drop`, `stack_low`, `log`, …) gets the **whole batch** rejected with `400 unsupported finding`, so the blob is built with `POLICY_HEAP_LOW` only.
+| Button | What the board does | Log | Incident on runtime.exein.io |
+|---|---|---|---|
+| **1** | Logs the same error 5 times | `<err> workload: sensor read failed: -5` (5×) | **Log Event**, medium, *discovery*: **one** incident showing the message, not five |
+| **2** | Burst-allocates 24 × 512 B (past 60% of the 16 KB heap), frees after 2 s | `BTN2: burst-allocated 24 x 512 B …` | **Heap Exhaustion**, high, *impact* |
+| **3** | Starts thread `stack_hog`, which recurses to ~85% of its 1 KB stack and stays there 20 s | `BTN3: stack_hog near its stack limit for 20 s …` | **Free Stack Below Critical Threshold**, high, *impact*, naming thread `stack_hog`; repeats every interval while the thread lives |
+| **4** | Leaks 160 × 32 B, one every 100 ms (16 s), below the exhaustion threshold; frees after 2 s | `BTN4: leaking 160 x 32 B over 16 s` … `BTN4: leaked …` | **Memory Leak**, medium, *impact*, once the growth has lasted 8 leak windows; usually one more right after the memory is freed |
+
+Every alert batch ends with `dispatcher: … POST status 204`. A button pressed again while its previous run is still active is ignored.
 
 nuSIM health check over AT (the app's AT host shares the log UART; any terminal with DTR asserted, e.g. `python3 -m serial.tools.miniterm --dtr 1 <port> 115200`): `AT%XICCID` → your nuSIM's ICCID, `AT+CEREG?` → `0,1`/`0,5`, `AT+COPS?` → `26201`.
 
@@ -165,7 +168,7 @@ nuSIM health check over AT (the app's AT host shares the log UART; any terminal 
 ## How it fits together
 
 - **`app/src/main.c`**: `nrf_modem_lib_init()`, platform CA into the modem key store (LTE must be off), LTE via the modem's Zephyr net_if (`conn_mgr`), `runtime_zephyr_start()` (waits for IPv4, SNTP, SystemInfo), `workload_start()`. A small credential backend keeps CA + client identity in the modem; nothing goes to TF-M ITS. LED1 tracks L4 connectivity.
-- **`app/src/app_workload.c`**: Button 2 → 24 × 512 B burst on the system heap → freed again.
+- **`app/src/app_workload.c`**: one trigger per button. Button 1 → 5 × `LOG_ERR`; Button 2 → 24 × 512 B heap burst, freed again; Button 3 → `stack_hog` thread at ~85% stack; Button 4 → 160 × 32 B slow leak, freed again.
 - **`app/prj.conf`**: monitor feature set (frozen into the blob), modem TLS, platform endpoint, AT host.
 - **Monitor as a binary Zephyr module:** see [How the Exein runtime library is configured](#how-the-exein-runtime-library-is-configured).
 - **Rebuilding the blob** (internal; needed after changing any monitor option in `prj.conf`): build `app/` against the `exein-runtime-zephyr` sources (with a `platform-protobuf` checkout at `../protobuf`, branch `zephyr-agent-schema`, plus the issue #3 patch applied), then package it with upstream's script and commit `dist/runtime-zephyr/*` as `runtime-zephyr/`:
@@ -202,10 +205,12 @@ Every option the library code itself reads is compiled into the `.a`. Changing t
 
 ```conf
 CONFIG_RUNTIME_MONITOR=y
-CONFIG_POLICY_HEAP_LOW=y        # the only finding prod accepts
-CONFIG_POLICY_P2=n              # memory-leak trend   (rejected by the platform today)
-CONFIG_POLICY_STACK_LOW=n       # stack high-water    (rejected)
-CONFIG_POLICY_LOG=n             # error logs → alerts (rejected)
+CONFIG_POLICY_HEAP_LOW=y        # Button 2: Heap Exhaustion
+CONFIG_POLICY_P2=y              # Button 4: Memory Leak (trend over leak windows)
+CONFIG_POLICY_STACK_LOW=y       # Button 3: Free Stack Below Critical Threshold
+CONFIG_POLICY_LOG=y             # Button 1: Log Event (every LOG_ERR)
+CONFIG_THREAD_STACK_WARN_PCT=80     # stack_hog peaks at ~85%; the default 90 misses it
+CONFIG_MEM_LEAK_WINDOW_EVENTS=16    # 8 windows x 16 heap events; Button 4 makes 160
 CONFIG_THREAD_COLLECT_PERIOD_MS=2000
 CONFIG_ANALYZER_PERIOD_MS=1000      # analyzer drains the event buffer every second
 CONFIG_MONITOR_EVENT_BUF_SIZE=16384
@@ -265,7 +270,7 @@ rc = runtime_zephyr_start(&info, &conn, NULL);  // NULL = thresholds from Kconfi
 4. Send SystemInfo.
 5. Start the collector, analyzer and dispatcher threads.
 
-Then `workload_start()` arms Button 2.
+Then `workload_start()` arms Buttons 1-4.
 
 ### What to change where
 
@@ -274,7 +279,7 @@ Then `workload_start()` arms Button 2.
 | Endpoint, ports, connect timeout | `prj.conf` connection block | App rebuild |
 | Platform host, token, custom id | settings page (web flasher or `scripts/settings-hex.py`) | Nothing: flash the page |
 | Policies, periods, buffer sizes | `prj.conf` monitor block | **Blob rebuild** (see "Rebuilding the blob" above), then app |
-| HEAP_LOW threshold only | pass `runtime_zephyr_thresholds` to `runtime_zephyr_start()` | App rebuild |
+| HEAP_LOW / STACK_LOW thresholds, leak windows | pass `runtime_zephyr_thresholds` to `runtime_zephyr_start()` | App rebuild |
 | Where credentials are stored | `creds` backend in `main.c` | App rebuild |
 
 `runtime-zephyr/` also contains upstream's `runtime_monitor.conf`, which is the TLS-on-app-core (mbedTLS) variant. This app doesn't use it: `prj.conf` follows upstream's `runtime_monitor_ncs.conf` (TLS in the modem).
@@ -284,7 +289,8 @@ Then `workload_start()` arms Button 2.
 - **Flashing failed halfway:** don't unplug, power off or reset the board, flash again right away. On the nRF9151 debug access locks at every reset until the firmware opens it; without a bootloader nothing opens it, and the only way back in is ERASEALL, which destroys the nuSIM.
 - **`NW reg status: 90` (UICC_FAIL):** built without the Redtea TF-M (`overlay-nusim.conf` missing), or the nuSIM ITS is erased (check `0xF8000`; restoring needs a full backup taken before, otherwise DT has to re-provision).
 - **`no connectivity before registration (-116)`:** LTE attach slower than `CONFIG_RUNTIME_MONITOR_NET_CONNECT_TIMEOUT` (180 s).
-- **Incidents POST `400`:** an unsupported finding in the batch; see *Platform support*.
+- **Incidents POST `400`:** the platform rejected a finding in the batch (the whole batch is dropped). All four finding types are accepted on platform.exein.io since 2026-10-23.
+- **Log Event incidents without pressing Button 1:** the LOG policy reports *every* `LOG_ERR` on the board, including the system's own (modem, LTE).
 - **No AT response:** DTR must be asserted (picocom `--noreset`, minicom and raw `stty` fail silently).
 
 ## Contacts
