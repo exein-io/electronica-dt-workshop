@@ -1,9 +1,8 @@
 /*
  * Exein Runtime Security Monitor on the nRF9151 DK.
  *
- * Runs the monitor (precompiled runtime-zephyr blob, HEAP_LOW policy: the
- * only finding the platform accepts today) beside a button-driven demo
- * workload (see app_workload.c). The monitor registers with the Exein platform over LTE and
+ * Runs the monitor (precompiled runtime-zephyr blob: HEAP_LOW, MEM_LEAK,
+ * STACK_LOW and LOG policies) beside a button-driven demo workload (see app_workload.c). The monitor registers with the Exein platform over LTE and
  * posts incidents there; TLS runs in the modem, credentials live in the
  * modem's key store under SEC_TAG.
  */
