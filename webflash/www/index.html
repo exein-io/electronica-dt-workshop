@@ -221,9 +221,14 @@ $("connect").onclick = async () => {
     log(`connected: ${device.productName} S/N ${device.serialNumber}, interface ${found.intf}, ` +
         `EP IN 0x${usb.readEp.toString(16)} / OUT 0x${usb.writeEp.toString(16)}, max packet ${usb.mps}`);
   } catch (e) {
-    $("probe").textContent = e.message;
+    // Windows: same error for "another program holds the probe" and "non-WinUSB driver".
+    const hint = /claim/i.test(e.message)
+      ? " Close every program using the probe (nRF Connect, J-Link tools, VS Code, other flasher tabs) and replug." +
+        " On Windows, Device Manager should list it as \"J-Link Device (WinUSB)\"."
+      : "";
+    $("probe").textContent = e.message + hint;
     $("probe").className = "status err";
-    log(`connect failed: ${e.message}`, "err");
+    log(`connect failed: ${e.message}${hint}`, "err");
   }
 };
 
