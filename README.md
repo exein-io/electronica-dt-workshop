@@ -248,7 +248,7 @@ info.custom_id = custom_id;            // settings page, else "nRF9151-DK_<FICR 
 struct runtime_zephyr_connection conn = RUNTIME_ZEPHYR_CONNECTION_INIT;         // from layer 3
 
 conn.host = conn.registration_host = cfg.host;  // only if the settings page sets a host
-conn.bootstrap_token = cfg.token;      // only with a settings-page token and no identity yet
+conn.bootstrap_token = cfg.token;      // only with a settings-page token (old identity deleted first)
 conn.creds   = &creds;                 // our credential backend
 conn.sec_tag = SEC_TAG;                // 4242
 

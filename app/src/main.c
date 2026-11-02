@@ -230,17 +230,33 @@ int main(void)
 		LOG_ERR("CA provisioning: %d", rc);
 	}
 
-	lte_led_init();
-
-	/* LTE via the modem's Zephyr net_if: the monitor waits for its L4 event. */
-	conn_mgr_all_if_up(true);
-	conn_mgr_all_if_connect(true);
-
 	int rc_cfg = read_cfg();
 
 	if (rc_cfg < 0) {
 		LOG_WRN("settings page unreadable or invalid: %d", rc_cfg);
 	}
+
+	/* A token on the settings page means "register (again)": delete the old
+	 * identity, since the library only registers without one. Must happen
+	 * here, while the modem is still offline (key store is read-only once
+	 * LTE is up).
+	 */
+	if (cfg.token[0] && has_identity()) {
+		int rc_pub = modem_key_mgmt_delete(SEC_TAG, MODEM_KEY_MGMT_CRED_TYPE_PUBLIC_CERT);
+		int rc_key = modem_key_mgmt_delete(SEC_TAG, MODEM_KEY_MGMT_CRED_TYPE_PRIVATE_CERT);
+
+		if (has_identity()) {
+			LOG_ERR("could not delete the old identity (%d, %d)", rc_pub, rc_key);
+		} else {
+			LOG_INF("new token on the settings page; old identity deleted");
+		}
+	}
+
+	lte_led_init();
+
+	/* LTE via the modem's Zephyr net_if: the monitor waits for its L4 event. */
+	conn_mgr_all_if_up(true);
+	conn_mgr_all_if_connect(true);
 
 	static struct runtime_zephyr_sysinfo info = RUNTIME_ZEPHYR_SYSINFO_INIT;
 	/* Custom id: from the settings page, else "nRF9151-DK_<FICR device id>"
@@ -278,17 +294,14 @@ int main(void)
 	LOG_INF("platform %s (registration %s)", conn.host,
 		conn.registration_host && conn.registration_host[0] ? conn.registration_host : conn.host);
 
-	/* Token: from the settings page if the board has no identity yet,
-	 * else CONFIG_RUNTIME_MONITOR_BOOTSTRAP_TOKEN (empty in this repo).
-	 * The library still wants a non-empty token; without an identity the
+	/* Token: from the settings page (old identity deleted above), else
+	 * CONFIG_RUNTIME_MONITOR_BOOTSTRAP_TOKEN (empty in this repo). The
+	 * library still wants a non-empty token; without an identity the
 	 * registration then fails and the monitor runs offline.
 	 */
 	bool token_from_flash = false;
 
-	if (cfg.token[0] && has_identity()) {
-		LOG_INF("board already has an identity; clearing the unused token");
-		clear_cfg_token();
-	} else if (cfg.token[0]) {
+	if (cfg.token[0]) {
 		LOG_INF("registering with the token from the settings page (%u chars)",
 			(unsigned int)strlen(cfg.token));
 		conn.bootstrap_token = cfg.token;
