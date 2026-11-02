@@ -71,8 +71,7 @@ The page has three fields: **Exein Runtime token** (required the first time a bo
 The workshop firmware reads that page on every boot:
 - **Custom id:** sent in SystemInfo instead of the default `nRF9151-DK_<device id>`.
 - **Platform host:** used for registration (`:8004`) and telemetry (`:8003`) instead of the built-in `platform.exein.io`. A hostname or IPv4 address, no scheme or port.
-- **Token, no identity in the modem yet:** registers with it, stores the identity in the modem, then **clears the token** from the page after this one attempt (custom id and host stay). The platform consumes a token even when the device fails to read the reply, so retrying would only leave orphaned agents.
-- **Token, identity already there:** ignored and cleared.
+- **Token:** deletes any identity already in the modem (so a board re-registers, e.g. into another tenant), registers with it, stores the identity in the modem, then **clears the token** from the page after this one attempt (custom id and host stay). The platform consumes a token even when the device fails to read the reply, so retrying would only leave orphaned agents.
 
 Flashing again without any field set leaves the page as it is; flashing with settings replaces it.
 

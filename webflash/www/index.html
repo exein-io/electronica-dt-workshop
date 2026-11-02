@@ -98,7 +98,7 @@
              style="flex:1;min-width:220px;font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)">
     </div>
     <p class="note">If any of these is set, the flasher also writes a settings page at <code>0x80000</code>. Empty fields keep the firmware's
-      own value. The board registers with the token on its next boot (only if it has no identity yet) and then clears it; custom id and host
+      own value. The board registers with the token on its next boot (replacing any identity it already has) and then clears it; custom id and host
       stay until the next flash with settings. Needs firmware that reads the settings page (the workshop firmware does); other firmware ignores it.
       Watch the serial terminal for <code>registered with the platform; token cleared</code>.</p>
   </div>
