@@ -4,55 +4,90 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>nRF9151 Web Flasher</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400&family=Plus+Jakarta+Sans:wght@300;400;500&display=swap">
 <style>
+  /* Look of the workshop deck (Exein master): white, Plus Jakarta Sans light,
+     IBM Plex Mono caps labels in orange, soft gradient flare. */
   :root {
-    --bg: #f6f7f9; --fg: #1b1f24; --muted: #5b636e; --card: #ffffff; --line: #d9dde3;
-    --accent: #0b6bcb; --accent-fg: #ffffff; --ok: #1a7f37; --warn: #9a6700; --err: #c62828;
-    --log-bg: #0f1419; --log-fg: #d6dde5;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #0f1216; --fg: #e6e9ee; --muted: #9aa4b1; --card: #171b21; --line: #2a313a;
-      --accent: #4c9eff; --accent-fg: #0b0f14; --ok: #4ac26b; --warn: #d4a72c; --err: #ff6b6b;
-      --log-bg: #0a0d10; --log-fg: #c9d1d9;
-    }
+    --ink: #080808; --muted: #5d606b; --orange: #ff7323; --card: rgba(246,246,247,.82); --line: #e4e4e8;
+    --ok: #1a7f37; --warn: #b35a00; --err: #d0242b; --log-bg: #080808; --log-fg: #e8e8ea;
+    --sans: "Plus Jakarta Sans", system-ui, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Consolas, Menlo, monospace;
+    color-scheme: light; accent-color: var(--orange);
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg);
-         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
-  h1 { font-size: 1.5rem; margin: 0 0 4px; }
-  .sub { color: var(--muted); margin: 0 0 20px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
-  .card h2 { font-size: 1rem; margin: 0 0 8px; }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line);
-           background: var(--card); color: var(--fg); cursor: pointer; }
-  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-  button:disabled { opacity: .45; cursor: not-allowed; }
-  .status { font-weight: 600; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: #fff; color: var(--ink); font: 300 15px/1.55 var(--sans); }
+  /* ponytail: the deck's flare image as CSS gradients, so CI still ships just index.html */
+  body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(38vmax 30vmax at 102% -4%, rgba(255,115,35,.55), transparent 70%),
+      radial-gradient(30vmax 26vmax at 82% -10%, rgba(244,120,190,.45), transparent 70%),
+      radial-gradient(34vmax 30vmax at 96% 22%, rgba(120,160,255,.35), transparent 70%),
+      radial-gradient(40vmax 26vmax at -8% 108%, rgba(255,190,120,.30), transparent 70%); }
+  header.top { display: flex; justify-content: space-between; max-width: 820px; margin: 0 auto; padding: 14px 16px 0;
+    font: 400 11px var(--sans); }
+  main { max-width: 820px; margin: 0 auto; padding: 28px 16px 48px; }
+  .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 44px; }
+  .brand img { height: 26px; } .brand img.t { height: 30px; } .brand i { width: 1px; height: 30px; background: var(--ink); }
+  h1 { font-weight: 300; font-size: clamp(2.4rem, 7vw, 3.8rem); line-height: 1.02; letter-spacing: -.01em; margin: 0 0 18px; }
+  .kicker, .card h2 span, .bar label, footer { font: 400 11px/1.5 var(--mono); text-transform: uppercase; letter-spacing: .04em; }
+  .kicker { margin: 0 0 18px; }
+  .sub { color: var(--muted); margin: 0 0 32px; max-width: 640px; }
+  .card { background: var(--card); backdrop-filter: blur(6px); border-radius: 4px; padding: 20px 22px; margin-bottom: 14px; }
+  .card h2 { font-size: 1.2rem; font-weight: 400; margin: 0 0 12px; }
+  .card h2 span { display: block; font-size: 13px; margin-bottom: 4px; color: var(--ink); }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .gap { margin-top: 10px; }
+  label.field { font-weight: 500; min-width: 170px; }
+  button { font: 400 14px var(--sans); padding: 9px 18px; border-radius: 999px; border: 1px solid var(--ink);
+           background: transparent; color: var(--ink); cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+  button:hover:not(:disabled) { background: var(--ink); color: #fff; }
+  button.primary { background: var(--ink); color: #fff; }
+  button.primary:hover:not(:disabled) { background: var(--orange); border-color: var(--orange); }
+  button:disabled { opacity: .35; cursor: not-allowed; }
+  input[type=text], #term-in { flex: 1; min-width: 220px; font: inherit; padding: 8px 12px; border-radius: 4px;
+           border: 1px solid var(--line); background: #fff; color: var(--ink); }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+  #term-in { font: 12px var(--mono); }
+  .status { font-weight: 500; }
   .ok { color: var(--ok); } .warn { color: var(--warn); } .err { color: var(--err); }
-  .note { color: var(--muted); font-size: .9rem; margin: 8px 0 0; }
+  .note { color: var(--muted); font-size: .88rem; margin: 10px 0 0; }
   .note.warn { color: var(--warn); }
-  .alert { border-left: 4px solid var(--warn); padding: 8px 12px; background: var(--card); margin-bottom: 16px; border-radius: 6px; }
-  progress { width: 100%; height: 14px; }
-  .bar { margin-top: 8px; }
-  .bar label { display: flex; justify-content: space-between; font-size: .85rem; color: var(--muted); }
-  pre { background: var(--log-bg); color: var(--log-fg); padding: 12px; border-radius: 8px; height: 260px;
-        overflow: auto; margin: 0; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
-  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
-  a { color: var(--accent); }
+  .alert { border-left: 2px solid var(--orange); padding: 10px 14px; background: var(--card); margin-bottom: 14px; border-radius: 0 4px 4px 0; }
+  progress { width: 100%; height: 6px; appearance: none; border: 0; border-radius: 3px; background: var(--line); overflow: hidden; }
+  progress::-webkit-progress-bar { background: var(--line); }
+  progress::-webkit-progress-value { background: linear-gradient(90deg, #f478be, var(--orange)); }
+  progress::-moz-progress-bar { background: linear-gradient(90deg, #f478be, var(--orange)); }
+  .bar { margin-top: 12px; }
+  .bar label { display: flex; justify-content: space-between; color: var(--muted); margin-bottom: 4px; }
+  pre { background: var(--log-bg); color: var(--log-fg); padding: 14px; border-radius: 4px; height: 260px;
+        overflow: auto; margin: 0; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-all; }
+  pre .ok { color: #5fd389; } pre .warn { color: #ffb15c; } pre .err { color: #ff7b7b; }
+  code { font-family: var(--mono); font-size: .88em; }
+  a { color: var(--ink); text-decoration-color: var(--orange); text-underline-offset: 3px; }
+  a:hover { color: var(--orange); }
+  footer { max-width: 820px; margin: 0 auto; padding: 0 16px 32px; display: flex; justify-content: space-between; }
 </style>
 </head>
 <body>
+<header class="top"><span>exein.io</span><span>electronica 2026 · edge lab LIVE!</span></header>
 <main>
+  <div class="brand">
+    <img src="data:image/png;base64,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" alt="exein">
+    <i></i>
+    <img class="t" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEkAAABWCAYAAACD87uSAAACd0lEQVR4Xu2cC0rsQBBFszQXNQtwZ1mLcSFKhYmEa39udVWPJtwDBx74XlX3YcaIMG/5XB5vH8vjXZa1Pov9YVseX7Ks9VGkjopEqEiEikQ4PRI+KZ67Vvx7HnFexsyW6ZFs1v7IbBDdh/OQU7hf/3bErEhrL8yZ6D6c1yK6ywxH8sQ5iOwzcR5DZGck0ooHYRnc9yPO82Dnxnk9hyKNvHrOePehOM/L5gzljhQNZHj2lcR5I9g9cG5NV6SMQAa7rybOG2UjX1GeSMPfgxByX1WcF8HuhfNROhIOj8Dsa4nzouB8lIqU9TY76O3rifOi9M7DREp7mx109nXFeRngjrPdSNmvIqO1jxHnZdA6UzcSDsugtY8R52WBew6bkfYvTqC2jxXnZbFVnnTNSDPeakZtHyvOy6J2rmYkHJJFbR8rzsui9lO4IgG4y2xFSn/0H1T20eK8THCXWY20f2ESpX0ecV4mW+GbtyIBpbMpElA6myIBpbPNbFGldBCPOO+WKBKBIhEoEoEiESgSgSIRKBKBIhFcMlL00KbnR/foPpzXIrrL3O+WNogkug/ntYjuMhWJUJEIFYlQkQgViVCRCBWJUJEIFYlQkQgViVCRCBWJUJEIFYnQc7c0ogfHebdEkQgUiUCRCBSJQJEIFIlAkQgUiUCRCBSJQJEIFIlAkQiikf7kVxevRpEI8NIDrjjzVtQ+wul11ueD/wVb4UN3g97z1WQXK1x22Nt9b9qSAx3eItTzSbbi5ZJ1/cd7L8UC1LSDFy4zXTwHineYDh7wCuIdpoMHuIJ4h+ngAa4g3mE6eIAriHeYDh7gCuIdpoNPjiuIdxCJfAMMLN1KLnHG7gAAAABJRU5ErkJggg==" alt="Deutsche Telekom">
+  </div>
+  <p class="kicker">Hands-on with Exein Runtime for Zephyr on the nRF9151 and Deutsche Telekom nuSIM</p>
   <h1>nRF9151 Web Flasher</h1>
   <p class="sub">Flash the Electronica DT workshop firmware onto an nRF9151 DK straight from the browser:
     <a href="https://probe.rs">probe-rs</a> compiled to WebAssembly, talking to the DK's onboard J-Link over WebUSB.
     Nothing to install. Source: <a href="https://github.com/exein-io/electronica-dt-workshop/tree/main/webflash">exein-io/electronica-dt-workshop</a>.</p>
 
   <div class="alert">
-    This page needs Chrome or Edge 137+ on Linux, macOS, Windows or Android. Windows is tested on one machine so far.
+    This page needs Chrome or Edge 137+ on Linux, macOS, Windows or Android. Tested on several Windows versions.
     <strong>If flashing fails: don't unplug or reset the board, click Flash again.</strong>
     Prefer Nordic's tools? <code>nrfutil</code>, step by step in the
     <a href="https://github.com/exein-io/electronica-dt-workshop#b-with-nrfutil-windows-macos-linux">README</a>.
@@ -61,7 +96,7 @@
   <div id="unsupported" class="alert" hidden></div>
 
   <div class="card">
-    <h2>1. Connect the J-Link</h2>
+    <h2><span>01.</span>Connect the J-Link</h2>
     <div class="row">
       <button id="connect" class="primary">Connect J-Link…</button>
       <span id="probe" class="status">not connected</span>
@@ -70,7 +105,7 @@
   </div>
 
   <div class="card">
-    <h2>2. Choose the image and settings</h2>
+    <h2><span>02.</span>Choose the image and settings</h2>
     <div class="row" id="release-row" hidden>
       <label><input type="radio" name="img" id="img-release"> Release <strong id="release-name"></strong> (latest CI build)</label>
     </div>
@@ -80,22 +115,19 @@
       <span id="file-name" class="status">none chosen</span>
       <input id="file" type="file" accept=".hex" hidden>
     </div>
-    <div class="row" style="margin-top:8px">
-      <label for="token" style="font-weight:600;min-width:170px">Exein Runtime token</label>
-      <input id="token" type="text" autocomplete="off" spellcheck="false" placeholder="required the first time: bootstrap token from runtime.exein.io"
-             style="flex:1;min-width:220px;font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)">
+    <div class="row gap">
+      <label for="token" class="field">Exein Runtime token</label>
+      <input id="token" type="text" autocomplete="off" spellcheck="false" placeholder="required the first time: bootstrap token from runtime.exein.io">
     </div>
     <p id="token-warn" class="note warn">No token: fine for reflashing a board that is already registered.
       A new board needs one, otherwise it can't register and no incidents reach the platform.</p>
-    <div class="row" style="margin-top:8px">
-      <label for="custom-id" style="font-weight:600;min-width:170px">Custom id</label>
-      <input id="custom-id" type="text" autocomplete="off" spellcheck="false" placeholder="optional: default nRF9151-DK_&lt;device id&gt;"
-             style="flex:1;min-width:220px;font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)">
+    <div class="row gap">
+      <label for="custom-id" class="field">Custom id</label>
+      <input id="custom-id" type="text" autocomplete="off" spellcheck="false" placeholder="optional: default nRF9151-DK_&lt;device id&gt;">
     </div>
-    <div class="row" style="margin-top:8px">
-      <label for="host" style="font-weight:600;min-width:170px">Platform host</label>
-      <input id="host" type="text" autocomplete="off" spellcheck="false" placeholder="optional: default platform.exein.io (firmware built-in)"
-             style="flex:1;min-width:220px;font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)">
+    <div class="row gap">
+      <label for="host" class="field">Platform host</label>
+      <input id="host" type="text" autocomplete="off" spellcheck="false" placeholder="optional: default platform.exein.io (firmware built-in)">
     </div>
     <p class="note">If any of these is set, the flasher also writes a settings page at <code>0x80000</code>. Empty fields keep the firmware's
       own value. The board registers with the token on its next boot (replacing any identity it already has) and then clears it; custom id and host
@@ -104,7 +136,7 @@
   </div>
 
   <div class="card">
-    <h2>3. Flash</h2>
+    <h2><span>03.</span>Flash</h2>
     <div class="row">
       <button id="flash" class="primary" disabled>Flash</button>
       <label><input id="backup" type="checkbox" checked> download a backup of the nuSIM data first (restorable only while the chip's keys are intact)</label>
@@ -122,28 +154,28 @@
   </div>
 
   <div class="card">
-    <h2>Serial terminal</h2>
+    <h2><span>04.</span>Serial terminal</h2>
     <div class="row">
       <button id="term-open">Open serial port…</button>
       <span id="term-status" class="status">closed</span>
     </div>
     <p class="note">The board's UART through the J-Link's virtual COM port (pick the J-Link's <em>first</em> port), 115200 baud.
       Works while the board runs normally and next to flashing. With the workshop firmware you can type AT commands, e.g. <code>AT%XICCID</code>.</p>
-    <pre id="term" style="margin-top:8px"></pre>
-    <div class="row" style="margin-top:8px">
-      <input id="term-in" placeholder="type and press Enter (sent with CR)" disabled
-             style="flex:1;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)">
+    <pre id="term" class="gap"></pre>
+    <div class="row gap">
+      <input id="term-in" placeholder="type and press Enter (sent with CR)" disabled>
     </div>
   </div>
 
   <div class="card">
-    <h2>Log</h2>
-    <div class="row" style="margin-bottom:8px">
+    <h2><span>05.</span>Log</h2>
+    <div class="row">
       <label><input id="verbose" type="checkbox"> verbose (probe-rs debug log)</label>
     </div>
     <pre id="log"></pre>
   </div>
 </main>
+<footer><span>Exein Runtime × Deutsche Telekom IoT</span><span>probe-rs · WebUSB · WebAssembly</span></footer>
 
 <script type="module">
 const $ = (id) => document.getElementById(id);
