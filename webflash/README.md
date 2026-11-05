@@ -20,15 +20,17 @@ In the devcontainer on GitHub Codespaces, port 8765 is forwarded privately (behi
 ## Usage
 
 1. Open the page, click **Connect J-Link…** and pick the J-Link.
-2. Choose the image: **Release** (the latest CI build bundled with the page, preselected) or **Own .hex file** (an Intel hex built for `nrf9151dk/nrf9151/ns`, e.g. `app/build/merged.hex`). Optionally fill in the token, custom id and platform host (see below): with a token, the board registers itself on its next boot.
-3. **Flash**: it erases the sectors the image covers, programs, verifies and resets the board.
+2. Paste the token (see below): with a token, the board registers itself on its next boot.
+3. **Flash**: it flashes the release bundled with the page (the latest CI build), erasing only the sectors the image covers, then verifies and resets the board.
+
+The page starts in simple mode: just these three steps. **Extended mode** (checkbox at the top, remembered in the browser) adds **Own .hex file** (an Intel hex built for `nrf9151dk/nrf9151/ns`, e.g. `app/build/merged.hex`), custom id and platform host, the nuSIM backup, the serial terminal and the log. In simple mode the hidden fields are not used, even if they were filled in before.
 
 ## nuSIM safety
 
 - `src/lib.rs` parses the image and **refuses any byte at or above `0xF8000`**. That covers the nuSIM (TF-M storage `0xF8000–0xFFFFF`, ITS at `0xF8000–0xFDFFF`) and the UICR (`0xFF8000`), which holds the keys the ITS is encrypted with. Unit test: `cargo test`.
 - probe-rs is attached without the erase-all permission, so it refuses ERASEALL (the only way to clear UICR on nRF91) instead of running it. It erases only the 4 KB sectors the image covers, then verifies.
 - **MCUboot stays bootable:** the nRF9151 locks debug access at every reset until the firmware reopens it, so a board left without a bootloader can only be unlocked by ERASEALL (nuSIM lost). The flasher compares MCUboot (`0x0–0x10000`) with the chip and skips it when unchanged; a changed MCUboot is written last, after the app. Each part is retried once inside the session. If it still fails: don't reset, click Flash again.
-- **nuSIM backup** (checkbox, on by default): `0xF8000–0xFFFFF` is read right after attach, before anything is erased, and downloaded as `nusim-backup-<S/N>-<time>.hex` to the browser's download folder (e.g. `~/Downloads`, or wherever Chrome asks). Keep it private. It restores the nuSIM only on the same chip and only while its UICR key slots are intact (the keys themselves are read-protected and never in a backup); restore with `nrfutil device program --options chip_erase_mode=ERASE_RANGES_TOUCHED_BY_FIRMWARE`.
+- **nuSIM backup** (extended mode, checkbox, off by default): `0xF8000–0xFFFFF` is read right after attach, before anything is erased, and downloaded as `nusim-backup-<S/N>-<time>.hex` to the browser's download folder (e.g. `~/Downloads`, or wherever Chrome asks). Keep it private. It restores the nuSIM only on the same chip and only while its UICR key slots are intact (the keys themselves are read-protected and never in a backup); restore with `nrfutil device program --options chip_erase_mode=ERASE_RANGES_TOUCHED_BY_FIRMWARE`.
 - Tested on the workshop DK: a release image flashed from the browser; afterwards ICCID, `%XSIM: 1` and LTE registration were unchanged.
 
 Images for boards without nuSIM that use the last 32 KB of flash are refused too. That's deliberate.
@@ -66,7 +68,7 @@ python3 -m http.server -d /tmp/site 8765                # WebUSB needs a secure 
 
 ## Settings: token, custom id, platform host
 
-The page has three fields: **Exein Runtime token** (required the first time a board is flashed, so it can register; the page warns while it is empty), **Custom id** and **Platform host** (both optional). If any is set, it also writes a **settings page** at `0x80000` (start of the unused MCUboot secondary slot): `"EXEINCFG"`, then token, custom id and host as NUL-terminated strings (empty = keep the firmware's value). The signed app image can't carry them, because MCUboot checks its signature on every boot.
+The page has three fields: **Exein Runtime token** (required the first time a board is flashed, so it can register; the page warns while it is empty), **Custom id** and **Platform host** (both optional, extended mode). If any is set, it also writes a **settings page** at `0x80000` (start of the unused MCUboot secondary slot): `"EXEINCFG"`, then token, custom id and host as NUL-terminated strings (empty = keep the firmware's value). The signed app image can't carry them, because MCUboot checks its signature on every boot.
 
 The workshop firmware reads that page on every boot:
 - **Custom id:** sent in SystemInfo instead of the default `nRF9151-DK_<device id>`.
@@ -79,4 +81,4 @@ Flashing again without any field set leaves the page as it is; flashing with set
 
 ## Serial terminal
 
-**Open serial port…** connects to the board's UART through the J-Link's virtual COM port (Web Serial, 115200, DTR asserted) while the board runs normally, also during and after flashing. You get the live log and, with the workshop firmware, AT commands (`AT%XICCID`, `AT+CEREG?`). Pick the J-Link's first port.
+In extended mode, **Open serial port…** connects to the board's UART through the J-Link's virtual COM port (Web Serial, 115200, DTR asserted) while the board runs normally, also during and after flashing. You get the live log and, with the workshop firmware, AT commands (`AT%XICCID`, `AT+CEREG?`). Pick the J-Link's first port.

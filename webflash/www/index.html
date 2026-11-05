@@ -23,6 +23,8 @@
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
+  body:not(.extended) .ext { display: none !important; }
+  .mode { display: flex; gap: 8px; align-items: center; margin: 0 0 14px; font: 400 11px/1.5 var(--mono); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; }
   body { margin: 0; background: #fff; color: var(--ink); font: 300 15px/1.55 var(--sans); }
   /* ponytail: the deck's flare image as CSS gradients, so CI still ships just index.html */
   body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
@@ -99,6 +101,8 @@
 
   <div id="unsupported" class="alert" hidden></div>
 
+  <label class="mode"><input type="checkbox" id="extended"> Extended mode: own .hex, custom id, host, nuSIM backup, serial terminal, log</label>
+
   <div class="card">
     <h2><span>01.</span>Connect the J-Link</h2>
     <div class="row">
@@ -113,7 +117,7 @@
     <div class="row" id="release-row" hidden>
       <label><input type="radio" name="img" id="img-release"> Release <strong id="release-name"></strong> (latest CI build)</label>
     </div>
-    <div class="row">
+    <div class="row ext">
       <label><input type="radio" name="img" id="img-file" checked> Own .hex file</label>
       <button id="pick-file">Choose .hex…</button>
       <span id="file-name" class="status">none chosen</span>
@@ -125,15 +129,15 @@
     </div>
     <p id="token-warn" class="note warn">No token: fine for reflashing a board that is already registered.
       A new board needs one, otherwise it can't register and no incidents reach the platform.</p>
-    <div class="row gap">
+    <div class="row gap ext">
       <label for="custom-id" class="field">Custom id</label>
       <input id="custom-id" type="text" autocomplete="off" spellcheck="false" placeholder="optional: default nRF9151-DK_&lt;device id&gt;">
     </div>
-    <div class="row gap">
+    <div class="row gap ext">
       <label for="host" class="field">Platform host</label>
       <input id="host" type="text" autocomplete="off" spellcheck="false" placeholder="optional: default platform.exein.io (firmware built-in)">
     </div>
-    <p class="note">If any of these is set, the flasher also writes a settings page at <code>0x80000</code>. Empty fields keep the firmware's
+    <p class="note ext">If any of these is set, the flasher also writes a settings page at <code>0x80000</code>. Empty fields keep the firmware's
       own value. The board registers with the token on its next boot (replacing any identity it already has) and then clears it; custom id and host
       stay until the next flash with settings. Needs firmware that reads the settings page (the workshop firmware does); other firmware ignores it.
       Watch the serial terminal for <code>registered with the platform; token cleared</code>.</p>
@@ -143,13 +147,13 @@
     <h2><span>03.</span>Flash</h2>
     <div class="row">
       <button id="flash" class="primary" disabled>Flash</button>
-      <label><input id="backup" type="checkbox" checked> download a backup of the nuSIM data first (restorable only while the chip's keys are intact)</label>
+      <label class="ext"><input id="backup" type="checkbox"> download a backup of the nuSIM data first (restorable only while the chip's keys are intact)</label>
     </div>
-    <p class="note">nuSIM safe: the image is refused unless every byte lies below <code>0xF8000</code>
+    <p class="note ext">nuSIM safe: the image is refused unless every byte lies below <code>0xF8000</code>
       (nuSIM storage and its UICR keys are never touched). Only the 4&nbsp;KB sectors the image covers are erased; then everything is verified.
       MCUboot is only rewritten when it changed, and then last: if flashing fails, the board still boots and you can retry.
       <strong>If flashing fails: don't unplug, power off or reset the board, click Flash again</strong> (debug access closes at the next reset if the bootloader is gone).</p>
-    <p class="note">The backup (<code>0xF8000–0xFFFFF</code>, read before anything is erased) holds this board's nuSIM data and goes to your browser's download folder (e.g. <code>~/Downloads</code>): keep it private.
+    <p class="note ext">The backup (<code>0xF8000–0xFFFFF</code>, read before anything is erased) holds this board's nuSIM data and goes to your browser's download folder (e.g. <code>~/Downloads</code>): keep it private.
       It only helps on the same chip and only as long as its UICR key slots were never erased: after a recover / erase all the nuSIM can't decrypt it any more (see the README).</p>
     <div class="bar"><label><span>Erase</span><span id="p0t"></span></label><progress id="p0" value="0" max="1"></progress></div>
     <div class="bar"><label><span>Program</span><span id="p1t"></span></label><progress id="p1" value="0" max="1"></progress></div>
@@ -157,7 +161,7 @@
     <p id="result" class="status"></p>
   </div>
 
-  <div class="card">
+  <div class="card ext">
     <h2><span>04.</span>Serial terminal</h2>
     <div class="row">
       <button id="term-open">Open serial port…</button>
@@ -171,7 +175,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card ext">
     <h2><span>05.</span>Log</h2>
     <div class="row">
       <label><input id="verbose" type="checkbox"> verbose (probe-rs debug log)</label>
@@ -214,12 +218,24 @@ fetch("release.json").then((r) => (r.ok ? r.json() : null)).then((info) => {
   updateFlash();
 }).catch(() => {});
 
+// --- Simple / extended mode (remembered in this browser) ---------------------------
+const ext = () => $("extended").checked;
+try { $("extended").checked = localStorage.getItem("extended") === "1"; } catch {}
+$("extended").onchange = () => {
+  document.body.classList.toggle("extended", ext());
+  try { localStorage.setItem("extended", ext() ? "1" : "0"); } catch {}
+  updateFlash();
+};
+document.body.classList.toggle("extended", ext());
+
 $("token").oninput = () => ($("token-warn").hidden = $("token").value.trim() !== "");
 
 // --- Image choice: the bundled release or an own .hex ------------------------
 let picked = null; // File
+// Simple mode always flashes the bundled release; extended mode follows the radio buttons.
+const useRelease = () => !ext() || $("img-release").checked;
 function updateFlash() {
-  $("flash").disabled = !usb || ($("img-release").checked ? !release : !picked);
+  $("flash").disabled = !usb || (useRelease() ? !release : !picked);
 }
 $("img-release").onchange = $("img-file").onchange = updateFlash;
 $("pick-file").onclick = () => $("file").click();
@@ -377,8 +393,9 @@ async function flash(bytes, name) {
     log(`flashing ${name} (${bytes.length} bytes)`);
     const ptr = w.exports.alloc(bytes.length);
     new Uint8Array(mem(), ptr, bytes.length).set(bytes);
+    // Simple mode: only the token; hidden fields keep their values but are not used.
     const put = (id) => {
-      const b = new TextEncoder().encode($(id).value.trim());
+      const b = new TextEncoder().encode(id === "token" || ext() ? $(id).value.trim() : "");
       const p = b.length ? w.exports.alloc(b.length) : 0;
       if (b.length) new Uint8Array(mem(), p, b.length).set(b);
       return [p, b.length];
@@ -390,7 +407,7 @@ async function flash(bytes, name) {
     const t0 = performance.now();
     const rc = await w.flash(ptr, bytes.length, usb.device.vendorId, usb.device.productId,
                              sptr, serial.length, tptr, tlen, cptr, clen, hptr, hlen, usb.readEp, usb.writeEp, usb.mps, $("verbose").checked ? 1 : 0,
-                             $("backup").checked ? 1 : 0);
+                             ext() && $("backup").checked ? 1 : 0);
     // The backup is read before anything is erased: save it even if flashing failed.
     const blen = w.exports.backup_len();
     if (blen) {
@@ -412,7 +429,7 @@ async function flash(bytes, name) {
     $("result").className = "status ok";
     log(`done in ${s} s`, "ok");
   } catch (e) {
-    $("result").textContent = `failed: ${e.message}`;
+    $("result").textContent = `failed: ${e.message}` + (ext() ? "" : " (full log: tick Extended mode)");
     $("result").className = "status err";
     log(`failed: ${e.message}`, "err");
     // A failed run can leave the wasm instance mid-call; start fresh next time.
@@ -424,7 +441,7 @@ async function flash(bytes, name) {
 }
 
 $("flash").onclick = async () => {
-  if ($("img-release").checked) {
+  if (useRelease()) {
     const r = await fetch(release.file);
     flash(new Uint8Array(await r.arrayBuffer()), `${release.tag} ${release.file}`);
   } else {
