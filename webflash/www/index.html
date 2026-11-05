@@ -45,6 +45,7 @@
   h1 { font-weight: 300; font-size: clamp(2.4rem, 7vw, 3.8rem); line-height: 1.02; letter-spacing: -.01em; margin: 0 0 18px; }
   .kicker, .card h2 span, .bar label, footer { font: 400 11px/1.5 var(--mono); text-transform: uppercase; letter-spacing: .04em; }
   .kicker { margin: 0 0 18px; }
+  .kicker .event { color: var(--orange); }
   .sub { color: var(--muted); margin: 0 0 32px; max-width: 640px; }
   .card { background: var(--card); backdrop-filter: blur(6px); border-radius: 4px; padding: 20px 22px; margin-bottom: 14px; }
   .card h2 { font-size: 1.2rem; font-weight: 400; margin: 0 0 12px; }
@@ -90,7 +91,8 @@
     <i></i>
     <img class="t" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEkAAABWCAYAAACD87uSAAACd0lEQVR4Xu2cC0rsQBBFszQXNQtwZ1mLcSFKhYmEa39udVWPJtwDBx74XlX3YcaIMG/5XB5vH8vjXZa1Pov9YVseX7Ks9VGkjopEqEiEikQ4PRI+KZ67Vvx7HnFexsyW6ZFs1v7IbBDdh/OQU7hf/3bErEhrL8yZ6D6c1yK6ywxH8sQ5iOwzcR5DZGck0ooHYRnc9yPO82Dnxnk9hyKNvHrOePehOM/L5gzljhQNZHj2lcR5I9g9cG5NV6SMQAa7rybOG2UjX1GeSMPfgxByX1WcF8HuhfNROhIOj8Dsa4nzouB8lIqU9TY76O3rifOi9M7DREp7mx109nXFeRngjrPdSNmvIqO1jxHnZdA6UzcSDsugtY8R52WBew6bkfYvTqC2jxXnZbFVnnTNSDPeakZtHyvOy6J2rmYkHJJFbR8rzsui9lO4IgG4y2xFSn/0H1T20eK8THCXWY20f2ESpX0ecV4mW+GbtyIBpbMpElA6myIBpbPNbFGldBCPOO+WKBKBIhEoEoEiESgSgSIRKBKBIhFcMlL00KbnR/foPpzXIrrL3O+WNogkug/ntYjuMhWJUJEIFYlQkQgViVCRCBWJUJEIFYlQkQgViVCRCBWJUJEIFYnQc7c0ogfHebdEkQgUiUCRCBSJQJEIFIlAkQgUiUCRCBSJQJEIFIlAkQiikf7kVxevRpEI8NIDrjjzVtQ+wul11ueD/wVb4UN3g97z1WQXK1x22Nt9b9qSAx3eItTzSbbi5ZJ1/cd7L8UC1LSDFy4zXTwHineYDh7wCuIdpoMHuIJ4h+ngAa4g3mE6eIAriHeYDh7gCuIdpoNPjiuIdxCJfAMMLN1KLnHG7gAAAABJRU5ErkJggg==" alt="Deutsche Telekom">
   </div>
-  <p class="kicker">Hands-on with Exein Runtime for Zephyr on the nRF9151 and Deutsche Telekom nuSIM</p>
+  <p class="kicker"><span class="event">Edge Security for Cellular IoT Devices · a joint Exein and Deutsche Telekom workshop</span><br>
+    Hands-on with Exein Runtime for Zephyr on the nRF9151 and Deutsche Telekom nuSIM</p>
   <h1>nRF9151 Web Flasher</h1>
   <p class="sub">Flash the Electronica DT workshop firmware onto an nRF9151 DK straight from the browser:
     <a href="https://probe.rs">probe-rs</a> compiled to WebAssembly, talking to the DK's onboard J-Link over WebUSB.
