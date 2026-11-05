@@ -481,7 +481,13 @@ $("flash").onclick = async () => {
 // --- Serial terminal (Web Serial, J-Link VCOM) ---------------------------------------
 let term = null; // { port, writer }
 const termEl = $("term");
+// An ANSI colour code can be split across two USB reads: hold back an unfinished one.
+let escTail = "";
 function termWrite(text) {
+  text = escTail + text;
+  const cut = text.search(/\x1b(\[[0-9;]*)?$/);
+  escTail = cut < 0 ? "" : text.slice(cut);
+  if (cut >= 0) text = text.slice(0, cut);
   termEl.append(text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\r/g, ""));
   if (termEl.textContent.length > 200000) termEl.textContent = termEl.textContent.slice(-150000);
   termEl.scrollTop = termEl.scrollHeight;
