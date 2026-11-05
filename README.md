@@ -99,7 +99,7 @@ Every release has `workshop.hex` (the firmware) on the [Releases page](https://g
 
 ### A. From the browser (Linux, macOS, Windows, Android)
 
-Open **https://exein-io.github.io/electronica-dt-workshop/** in Chrome or Edge, connect the J-Link, enter the token (first time), click **Flash**. Nothing to install. Details: [`webflash/`](webflash/README.md).
+Open **https://exein-io.github.io/electronica-dt-workshop/** in Chrome or Edge, click **Connect J-Link…**, paste the token (first time), click **Flash**. It shows your board's id (`nRF9151-DK_<device id>`, how it appears on runtime.exein.io) and the boot log. Nothing to install. Details: [`webflash/`](webflash/README.md).
 
 ### B. With nrfutil (Windows, macOS, Linux)
 

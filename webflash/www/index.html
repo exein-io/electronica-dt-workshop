@@ -98,7 +98,7 @@
 
   <div class="alert">
     This page needs Chrome or Edge 137+ on Linux, macOS, Windows or Android. Tested on several Windows versions.
-    <strong>If flashing fails: don't unplug or reset the board, click Flash again.</strong>
+    <strong>If a flash fails halfway: don't unplug, power off or reset. Click Flash again right away.</strong>
     Prefer Nordic's tools? <code>nrfutil</code>, step by step in the
     <a href="https://github.com/exein-io/electronica-dt-workshop#b-with-nrfutil-windows-macos-linux">README</a>.
   </div>
@@ -133,7 +133,7 @@
     </div>
     <div class="row gap">
       <label for="token" class="field">Exein Runtime token</label>
-      <input id="token" type="text" autocomplete="off" spellcheck="false" placeholder="required the first time: bootstrap token from runtime.exein.io">
+      <input id="token" type="text" autocomplete="off" spellcheck="false" placeholder="required the first time: the workshop token, or a bootstrap token from runtime.exein.io">
     </div>
     <p id="token-warn" class="note warn">No token: fine for reflashing a board that is already registered.
       A new board needs one, otherwise it can't register and no incidents reach the platform.</p>
@@ -178,6 +178,8 @@
     </div>
     <p class="note">The board's UART through the J-Link's virtual COM port (pick the J-Link's <em>first</em> port), 115200 baud.
       Works while the board runs normally and next to flashing. With the workshop firmware you can type AT commands, e.g. <code>AT%XICCID</code>.</p>
+    <p class="note">After flashing: LTE-M attach, then <code>registered with the platform; token cleared</code>. LED1 solid = connected.
+      Then press Buttons 1 to 4, one at a time, and wait for each incident on runtime.exein.io before the next.</p>
     <pre id="term" class="gap"></pre>
     <div class="row gap">
       <input id="term-in" placeholder="type and press Enter (sent with CR)" disabled>
@@ -444,7 +446,7 @@ async function flash(bytes, name) {
       const id = new TextDecoder().decode(new Uint8Array(mem(), w.exports.board_id_ptr(), blen2));
       $("board").innerHTML = "";
       $("board").append("Board: ", Object.assign(document.createElement("code"), { textContent: id }),
-        ` (find it under this id on the platform)` + (usb.device.serialNumber ? ` · J-Link S/N ${usb.device.serialNumber.replace(/^0+/, "")} (on the DK's sticker)` : ""));
+        ` (your board on runtime.exein.io)` + (usb.device.serialNumber ? ` · J-Link S/N ${usb.device.serialNumber.replace(/^0+/, "")} (on the DK's sticker)` : ""));
       $("board").hidden = false;
     }
     if (rc !== 0) {
