@@ -156,7 +156,7 @@ Press one button at a time and wait for its incident before the next one; violat
 |---|---|---|---|
 | **1** | Logs the same error 5 times | `<err> workload: sensor read failed: -5` (5×) | **Log Event**, medium, *discovery*: **one** incident showing the message, not five |
 | **2** | Burst-allocates 24 × 512 B (past 60% of the 16 KB heap), frees after 2 s | `BTN2: burst-allocated 24 x 512 B …` | **Heap Exhaustion**, high, *impact* |
-| **3** | Starts thread `stack_hog`, which recurses to ~85% of its 1 KB stack and stays there 20 s | `BTN3: stack_hog near its stack limit for 20 s …` | **Free Stack Below Critical Threshold**, high, *impact*, naming thread `stack_hog`; repeats every interval while the thread lives |
+| **3** | Starts thread `stack_hog`, which recurses to ~85% of its 1 KB stack and stays there 3 s | `BTN3: stack_hog near its stack limit for 3 s …` | **Free Stack Below Critical Threshold**, high, *impact*, naming thread `stack_hog`; one incident per press |
 | **4** | Leaks 160 × 32 B, one every 100 ms (16 s), below the exhaustion threshold; frees after 2 s | `BTN4: leaking 160 x 32 B over 16 s` … `BTN4: leaked …` | **Memory Leak**, medium, *impact*, once the growth has lasted 8 leak windows; usually one more right after the memory is freed |
 
 Every alert batch ends with `dispatcher: … POST status 204`. A button pressed again while its previous run is still active is ignored.

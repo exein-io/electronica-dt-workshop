@@ -71,14 +71,16 @@ static K_WORK_DEFINE(heap_burst, heap_burst_work);
 /* ── Button 3: Stack Overflow Risk ───────────────────────────────── */
 
 /* A dedicated thread recurses until STACK_HOG_PCT of its stack is used, then
- * stays alive for STACK_HOG_HOLD_S so the collector (THREAD_COLLECT_PERIOD_MS)
- * samples it, then exits. Must stay above CONFIG_THREAD_STACK_WARN_PCT and
+ * stays alive for STACK_HOG_HOLD_S so the collector (THREAD_COLLECT_PERIOD_MS,
+ * 2 s) samples it at least once, then exits. Shorter than the alert cooldown
+ * (ALERT_COOLDOWN_MS, 5 s): one press, one incident. A 20 s hold raised one
+ * incident per flush window, four per press. Must stay above CONFIG_THREAD_STACK_WARN_PCT and
  * below 100: a real overflow halts the board. Its own thread, because the
  * high-water mark of the system workqueue would stay high forever.
  */
 #define STACK_HOG_SIZE   1024
 #define STACK_HOG_PCT    90
-#define STACK_HOG_HOLD_S 20
+#define STACK_HOG_HOLD_S 3
 
 K_THREAD_STACK_DEFINE(hog_stack, STACK_HOG_SIZE);
 static struct k_thread hog_thread;
