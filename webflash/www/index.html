@@ -23,8 +23,12 @@
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  body:not(.extended) .ext { display: none !important; }
-  .mode { display: flex; gap: 8px; align-items: center; margin: 0 0 14px; font: 400 11px/1.5 var(--mono); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; }
+  /* Modes: simple = flash with the token only, extended = everything, terminal = serial terminal only. */
+  body[data-mode=simple] .ext, body[data-mode=terminal] .card:not(.term) { display: none !important; }
+  body[data-mode=terminal] .card.term, body[data-mode=simple].flashed .card.term { display: block !important; }
+  body[data-mode=terminal] #term { height: 60vh; }
+  .mode { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 14px; font: 400 11px/1.5 var(--mono); text-transform: uppercase; letter-spacing: .04em; }
+  .mode label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
   body { margin: 0; background: #fff; color: var(--ink); font: 300 15px/1.55 var(--sans); }
   /* ponytail: the deck's flare image as CSS gradients, so CI still ships just index.html */
   body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
@@ -101,7 +105,11 @@
 
   <div id="unsupported" class="alert" hidden></div>
 
-  <label class="mode"><input type="checkbox" id="extended"> Extended mode: own .hex, custom id, host, nuSIM backup, serial terminal, log</label>
+  <div class="mode">
+    <label><input type="radio" name="mode" value="simple" checked> Flash</label>
+    <label><input type="radio" name="mode" value="extended"> Extended: own .hex, custom id, host, nuSIM backup, terminal, log</label>
+    <label><input type="radio" name="mode" value="terminal"> Serial terminal only</label>
+  </div>
 
   <div class="card">
     <h2><span>01.</span>Connect the J-Link</h2>
@@ -159,9 +167,10 @@
     <div class="bar"><label><span>Program</span><span id="p1t"></span></label><progress id="p1" value="0" max="1"></progress></div>
     <div class="bar"><label><span>Verify</span><span id="p2t"></span></label><progress id="p2" value="0" max="1"></progress></div>
     <p id="result" class="status"></p>
+    <p id="board" class="note" hidden></p>
   </div>
 
-  <div class="card ext">
+  <div class="card ext term">
     <h2><span>04.</span>Serial terminal</h2>
     <div class="row">
       <button id="term-open">Open serial port…</button>
@@ -218,15 +227,17 @@ fetch("release.json").then((r) => (r.ok ? r.json() : null)).then((info) => {
   updateFlash();
 }).catch(() => {});
 
-// --- Simple / extended mode (remembered in this browser) ---------------------------
-const ext = () => $("extended").checked;
-try { $("extended").checked = localStorage.getItem("extended") === "1"; } catch {}
-$("extended").onchange = () => {
-  document.body.classList.toggle("extended", ext());
-  try { localStorage.setItem("extended", ext() ? "1" : "0"); } catch {}
-  updateFlash();
-};
-document.body.classList.toggle("extended", ext());
+// --- Mode: simple / extended / terminal (remembered in this browser) ----------------
+const modes = [...document.querySelectorAll('input[name="mode"]')];
+const ext = () => document.body.dataset.mode === "extended";
+function setMode(m) {
+  const r = modes.find((x) => x.value === m) || modes[0];
+  r.checked = true;
+  document.body.dataset.mode = r.value;
+  try { localStorage.setItem("mode", r.value); } catch {}
+}
+try { setMode(localStorage.getItem("mode")); } catch { setMode("simple"); }
+modes.forEach((r) => (r.onchange = () => { setMode(r.value); updateFlash(); }));
 
 $("token").oninput = () => ($("token-warn").hidden = $("token").value.trim() !== "");
 
@@ -385,6 +396,8 @@ async function loadWasm() {
 async function flash(bytes, name) {
   const buttons = [$("connect"), $("flash")];
   buttons.forEach((b) => (b.disabled = true));
+  $("board").hidden = true;
+  showBoot(); // open the serial port before the reset, so the whole boot log shows
   [0, 1, 2].forEach((k) => { $("p" + k).value = 0; $("p" + k + "t").textContent = ""; });
   $("result").textContent = "flashing… do not unplug the board";
   $("result").className = "status warn";
@@ -420,6 +433,15 @@ async function flash(bytes, name) {
       setTimeout(() => URL.revokeObjectURL(a.href), 10000);
       log(`nuSIM backup downloaded as ${a.download} (browser download folder; keep it private)`, "ok");
     }
+    // Custom id the firmware reports (read before flashing), to find the board on the platform.
+    const blen2 = w.exports.board_id_len();
+    if (blen2) {
+      const id = new TextDecoder().decode(new Uint8Array(mem(), w.exports.board_id_ptr(), blen2));
+      $("board").innerHTML = "";
+      $("board").append("Board: ", Object.assign(document.createElement("code"), { textContent: id }),
+        ` (find it under this id on the platform)` + (usb.device.serialNumber ? ` · J-Link S/N ${usb.device.serialNumber.replace(/^0+/, "")} (on the DK's sticker)` : ""));
+      $("board").hidden = false;
+    }
     if (rc !== 0) {
       const msg = new TextDecoder().decode(new Uint8Array(mem(), w.exports.last_error_ptr(), w.exports.last_error_len()));
       throw new Error(msg);
@@ -429,7 +451,7 @@ async function flash(bytes, name) {
     $("result").className = "status ok";
     log(`done in ${s} s`, "ok");
   } catch (e) {
-    $("result").textContent = `failed: ${e.message}` + (ext() ? "" : " (full log: tick Extended mode)");
+    $("result").textContent = `failed: ${e.message}` + (ext() ? "" : " (full log: switch to Extended)");
     $("result").className = "status err";
     log(`failed: ${e.message}`, "err");
     // A failed run can leave the wasm instance mid-call; start fresh next time.
@@ -461,10 +483,8 @@ if (!navigator.serial) {
   $("term-open").disabled = true;
   $("term-status").textContent = "Web Serial not available in this browser";
 }
-$("term-open").onclick = async () => {
-  if (term) { try { await term.port.close(); } catch {} return; }
+async function openTerm(port) {
   try {
-    const port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x1366 }] });
     await port.open({ baudRate: 115200 });
     await port.setSignals({ dataTerminalReady: true }); // the J-Link only forwards with DTR set
     term = { port, writer: port.writable.getWriter() };
@@ -496,7 +516,24 @@ $("term-open").onclick = async () => {
     $("term-status").textContent = e.message;
     $("term-status").className = "status err";
   }
+}
+$("term-open").onclick = async () => {
+  if (term) { try { await term.port.close(); } catch {} return; }
+  try {
+    openTerm(await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x1366 }] }));
+  } catch (e) {
+    $("term-status").textContent = e.message;
+    $("term-status").className = "status err";
+  }
 };
+// Flashing: show the board booting. Opening without a click needs a port this
+// page was granted before; with several (the J-Link has two) the user picks once.
+async function showBoot() {
+  document.body.classList.add("flashed");
+  if (term || !navigator.serial) return;
+  const ports = (await navigator.serial.getPorts()).filter((p) => p.getInfo().usbVendorId === 0x1366);
+  if (ports.length === 1) openTerm(ports[0]);
+}
 $("term-in").onkeydown = async (ev) => {
   if (ev.key !== "Enter" || !term) return;
   const line = ev.target.value;

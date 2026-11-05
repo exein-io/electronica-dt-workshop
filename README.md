@@ -7,7 +7,7 @@ Button 1-4 ─▶ error log / heap burst / deep stack / slow leak ─▶ LOG / H
           ─▶ POST /zephyr/threats (modem TLS, LTE-M) ─▶ incident
 ```
 
-**Try it from your browser:** [**exein-io.github.io/electronica-dt-workshop**](https://exein-io.github.io/electronica-dt-workshop/) flashes the latest release onto the DK over USB (Chrome/Edge on Linux, macOS, Windows or Android, nothing to install, nuSIM-safe), with the registration token field (serial terminal in extended mode). Without the browser: [Flash a release with nrfutil](#b-with-nrfutil-windows-macos-linux).
+**Try it from your browser:** [**exein-io.github.io/electronica-dt-workshop**](https://exein-io.github.io/electronica-dt-workshop/) flashes the latest release onto the DK over USB (Chrome/Edge on Linux, macOS, Windows or Android, nothing to install, nuSIM-safe), with the registration token field and a serial terminal mode for the device log. Without the browser: [Flash a release with nrfutil](#b-with-nrfutil-windows-macos-linux).
 
 ---
 
