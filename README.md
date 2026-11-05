@@ -118,25 +118,20 @@ Use this whenever you prefer Nordic's tools or can't use Chrome/Edge. **Never** 
    `ERASE_RANGES_TOUCHED_BY_FIRMWARE` is mandatory: never a full erase. With several boards connected, add `--serial-number <J-Link S/N>` (`nrfutil device list`).
 4. Watch the log in a serial terminal that asserts DTR (115200 baud, the J-Link's first COM port / tty; e.g. PuTTY, or `python3 -m serial.tools.miniterm --dtr 1 <port> 115200`): a new board logs `registered with the platform; token cleared`, then press the buttons (see *Run the demo*).
 
-`settings.hex` is the same settings page the web flasher writes (`0x80000`). The board clears the token after one registration attempt; a board that already has an identity ignores it, so reflashing never creates a new agent.
+`settings.hex` is the same settings page the web flasher writes (`0x80000`). The board clears the token after one registration attempt. A token replaces the board's identity (a new agent); reflashing only the firmware keeps it.
 
 ## Build and flash from source
 
+After [Workspace](#workspace):
 ```bash
 cd ~/git/dt-ws
-export ZEPHYR_SDK_INSTALL_DIR=~/zephyr-sdk-0.17.4
-electronica-dt-workshop/scripts/build.sh   # west build + nuSIM check, → app/build/merged.hex
-# log shows: runtime_zephyr: linking precompiled blob .../libruntime_zephyr.a
-
-west flash -d electronica-dt-workshop/app/build   # NEVER --erase
-
-# once per board: the token as a settings page (see Flash a release), or built in for a local build only:
-#   electronica-dt-workshop/scripts/build.sh '-DCONFIG_RUNTIME_MONITOR_BOOTSTRAP_TOKEN="<bootstrap token>"'
+electronica-dt-workshop/scripts/build.sh            # west build + nuSIM check, → app/build/merged.hex
+west flash -d electronica-dt-workshop/app/build     # NEVER --erase
 ```
 
-`overlay-nusim.conf` is mandatory: it enables `CONFIG_LIB_NUSIM` and the Redtea TF-M. MCUboot is required by the nuSIM module (`sysbuild.conf`, `sysbuild/mcuboot/`; the signing key is Redtea's public sample key, fine for a demo, not for products).
+`build.sh` adds the mandatory `overlay-nusim.conf` (nuSIM library + Redtea TF-M). MCUboot is required by the nuSIM module; its signing key (`app/sysbuild/mcuboot/`) is Redtea's public sample key, fine for a demo, not for products.
 
-**Registration:** the board registers itself on first boot when it has a token (from the settings page, or built in with `CONFIG_RUNTIME_MONITOR_BOOTSTRAP_TOKEN`) and stores cert and key in the modem key store (sec_tag 4242). The key store survives reflashing, so you register a board once; each registration creates a new agent. To register again, delete the identity in the serial terminal (`AT+CFUN=4`, `AT%CMNG=3,4242,1`, `AT%CMNG=3,4242,2`), then flash a new settings page. Never commit a token.
+A new board also needs its token once: flash a settings page as in [Flash a release](#b-with-nrfutil-windows-macos-linux) (or use the web flasher with **Own .hex file**). The board stores its identity in the modem key store (sec_tag 4242), which survives reflashing; a new settings page with a token deletes it and registers again (a new agent). Never commit a token.
 
 ## Run the demo
 
