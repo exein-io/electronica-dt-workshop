@@ -182,6 +182,12 @@
     <div class="row gap">
       <input id="term-in" placeholder="type and press Enter (sent with CR)" disabled>
     </div>
+    <div class="row gap" id="term-quick">
+      <button data-at="AT+CGMR" disabled>Modem firmware</button>
+      <button data-at="AT%XICCID" disabled>ICCID</button>
+      <button data-at="AT+CEREG?" disabled>LTE registration</button>
+      <button data-at="AT%XMONITOR" disabled>Network</button>
+    </div>
   </div>
 
   <div class="card ext">
@@ -487,6 +493,9 @@ async function openTerm(port) {
     await port.open({ baudRate: 115200 });
     await port.setSignals({ dataTerminalReady: true }); // the J-Link only forwards with DTR set
     term = { port, writer: port.writable.getWriter() };
+    termWrite("[connected. The board only logs at boot and on events: press RESET on the DK for the boot log, " +
+              "Button 1 for log lines, or send an AT command below]\n");
+    quick.forEach((b) => (b.disabled = false));
     $("term-status").textContent = "open";
     $("term-status").className = "status ok";
     $("term-open").textContent = "Close";
@@ -510,6 +519,7 @@ async function openTerm(port) {
       $("term-status").className = "status";
       $("term-open").textContent = "Open serial port…";
       $("term-in").disabled = true;
+      quick.forEach((b) => (b.disabled = true));
     }
   } catch (e) {
     $("term-status").textContent = e.message;
@@ -533,13 +543,18 @@ async function showBoot() {
   const ports = (await navigator.serial.getPorts()).filter((p) => p.getInfo().usbVendorId === 0x1366);
   if (ports.length === 1) openTerm(ports[0]);
 }
-$("term-in").onkeydown = async (ev) => {
-  if (ev.key !== "Enter" || !term) return;
-  const line = ev.target.value;
-  ev.target.value = "";
+async function termSend(line) {
+  if (!term) return;
   termWrite(`> ${line}\n`);
   await term.writer.write(new TextEncoder().encode(line + "\r"));
+}
+$("term-in").onkeydown = (ev) => {
+  if (ev.key !== "Enter") return;
+  termSend(ev.target.value);
+  ev.target.value = "";
 };
+const quick = [...document.querySelectorAll("#term-quick button")];
+quick.forEach((b) => (b.onclick = () => termSend(b.dataset.at)));
 </script>
 </body>
 </html>
