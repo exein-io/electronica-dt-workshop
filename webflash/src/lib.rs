@@ -412,10 +412,11 @@ mod tests {
     #[test]
     fn board_ids() {
         use super::{board_id, cfg_page};
-        // The workshop DK whose firmware logs "custom id nRF9151-DK_52B0D72AEC828961".
-        let ids = [0xEC82_8961, 0x52B0_D72A];
-        assert_eq!(board_id(ids, &[0xFF; 0x200]), "nRF9151-DK_52B0D72AEC828961");
-        assert_eq!(board_id(ids, &cfg_page("tok", "", "").unwrap().unwrap()), "nRF9151-DK_52B0D72AEC828961");
+        // A DK reading DEVICEID = 35105036 C4B8742D over SWD; its firmware logs
+        // "custom id nRF9151-DK_C4B8742D35105036" (checked 2026-11-05).
+        let ids = [0x3510_5036, 0xC4B8_742D];
+        assert_eq!(board_id(ids, &[0xFF; 0x200]), "nRF9151-DK_C4B8742D35105036");
+        assert_eq!(board_id(ids, &cfg_page("tok", "", "").unwrap().unwrap()), "nRF9151-DK_C4B8742D35105036");
         assert_eq!(board_id(ids, &cfg_page("", "bench-7", "").unwrap().unwrap()), "bench-7");
     }
 
