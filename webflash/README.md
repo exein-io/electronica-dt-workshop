@@ -20,10 +20,12 @@ In the devcontainer on GitHub Codespaces, port 8765 is forwarded privately (behi
 ## Usage
 
 1. Open the page, click **Connect J-Link…** and pick the J-Link.
-2. Paste the token (see below): with a token, the board registers itself on its next boot.
-3. **Flash**: it flashes the release bundled with the page (the latest CI build), erasing only the sectors the image covers, then verifies and resets the board.
+2. Choose the image: **Release** (the latest CI build bundled with the page, preselected) or **Own .hex file** (an Intel hex built for `nrf9151dk/nrf9151/ns`, e.g. `app/build/merged.hex`), and paste the token (see below): with a token, the board registers itself on its next boot.
+3. **Flash**: it erases only the sectors the image covers, programs, verifies and resets the board.
 
-The page starts in simple mode: just these three steps. **Extended mode** (checkbox at the top, remembered in the browser) adds **Own .hex file** (an Intel hex built for `nrf9151dk/nrf9151/ns`, e.g. `app/build/merged.hex`), custom id and platform host, the nuSIM backup, the serial terminal and the log. In simple mode the hidden fields are not used, even if they were filled in before.
+After flashing, the page shows the board's id: the custom id the firmware reports (the settings page's custom id, else `nRF9151-DK_` + the chip's FICR device id, read over SWD before flashing), which is how the board appears on the platform, and the J-Link S/N printed on the DK's sticker. Simple mode then also shows the serial terminal with the boot log; it opens by itself once the browser has been granted the J-Link's port, otherwise click **Open serial port…** and press RESET to see the boot again.
+
+Three modes at the top, remembered in the browser. **Flash** (default): just these three steps. **Serial terminal only**: the terminal, for watching the device log without flashing. **Extended** adds custom id and platform host, the nuSIM backup, the serial terminal and the log. In simple mode the hidden fields are not used, even if they were filled in before.
 
 ## nuSIM safety
 
@@ -81,4 +83,4 @@ Flashing again without any field set leaves the page as it is; flashing with set
 
 ## Serial terminal
 
-In extended mode, **Open serial port…** connects to the board's UART through the J-Link's virtual COM port (Web Serial, 115200, DTR asserted) while the board runs normally, also during and after flashing. You get the live log and, with the workshop firmware, AT commands (`AT%XICCID`, `AT+CEREG?`). Pick the J-Link's first port.
+In the Serial terminal only and Extended modes (and in Flash mode after flashing), **Open serial port…** connects to the board's UART through the J-Link's virtual COM port (Web Serial, 115200, DTR asserted) while the board runs normally, also during and after flashing. You get the live log and, with the workshop firmware, AT commands (`AT%XICCID`, `AT+CEREG?`). Pick the J-Link's first port.

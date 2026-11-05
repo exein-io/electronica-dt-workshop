@@ -42,6 +42,8 @@ const BOOT_END: u32 = 0x10000;
 /// SWD clocks to try, fastest first; probe-rs' default for J-Link is far slower.
 /// The nRF9151 DK's J-Link OB reports a 1 MHz base clock and refuses 4 MHz.
 const SWD_KHZ: [u32; 2] = [4000, 1000];
+/// FICR INFO.DEVICEID[0..2] (secure FICR at 0x00FF0000, INFO at +0x200).
+const FICR_DEVICEID: u32 = 0x00FF_0204;
 
 #[link(wasm_import_module = "webusb")]
 extern "C" {
@@ -133,6 +135,20 @@ fn cfg_page(token: &str, custom_id: &str, host: &str) -> Result<Option<Vec<u8>>,
     Ok(Some(page))
 }
 
+/// The custom id the workshop firmware reports after this flash: the settings
+/// page's custom id if set, else "nRF9151-DK_" + the FICR device id as Zephyr's
+/// hwinfo_get_device_id() orders it (DEVICEID[1], then DEVICEID[0], big endian).
+/// `page` is the settings page as it will be on the chip (any bytes if none).
+fn board_id(deviceid: [u32; 2], page: &[u8]) -> String {
+    let custom = page.strip_prefix(CFG_MAGIC)
+        .and_then(|f| f.split(|&b| b == 0).nth(1))
+        .filter(|c| !c.is_empty() && c.len() <= CUSTOM_ID_MAX && c.iter().all(|b| b.is_ascii_graphic()));
+    match custom {
+        Some(c) => String::from_utf8_lossy(c).into_owned(),
+        None => format!("nRF9151-DK_{:08X}{:08X}", deviceid[1], deviceid[0]),
+    }
+}
+
 /// Intel hex (extended linear address records, 16-byte data records) of `data` at `addr`.
 fn to_ihex(addr: u32, data: &[u8]) -> String {
     fn rec(kind: u8, offset: u16, payload: &[u8]) -> String {
@@ -180,9 +196,12 @@ fn page_progress() -> FlashProgress<'static> {
 
 /// Backup of the last run (Intel hex), handed to the page even when flashing fails.
 static BACKUP: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+/// Custom id of the board in the last `flash` call (empty if it couldn't be read).
+static BOARD: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 
 fn flash_image(hex: &str, cfg: Option<Vec<u8>>, backup: bool, vid: u16, pid: u16, serial: Option<String>, read_ep: u8, write_ep: u8, max_packet: usize) -> Result<(), String> {
     let mut segs = parse_hex(hex)?;
+    let new_page = cfg.clone();
     if let Some(page) = cfg {
         if segs.iter().any(|(a, d)| *a < CFG_PAGE + 0x1000 && *a + d.len() as u32 > CFG_PAGE) {
             return Err(format!("image already uses the settings page at 0x{CFG_PAGE:X}"));
@@ -206,6 +225,18 @@ fn flash_image(hex: &str, cfg: Option<Vec<u8>>, backup: bool, vid: u16, pid: u16
         "attach: {e}. If the log says \"Core 0 is locked\": debug access is locked (APPROTECT) because the firmware \
          isn't running. Power-cycle the board, wait a few seconds, retry. Never use recover / erase all: it destroys the nuSIM."))?;
     tracing::info!("attached to {CHIP}");
+
+    // Board id, so the user can find the board on the platform. Not fatal.
+    let mut ids = [0u32; 2];
+    let mut old_page = vec![0u8; 0x200];
+    match session.core(0).and_then(|mut c| { c.read_32(FICR_DEVICEID as u64, &mut ids)?; c.read(CFG_PAGE as u64, &mut old_page) }) {
+        Ok(()) => {
+            let id = board_id(ids, new_page.as_deref().unwrap_or(&old_page));
+            tracing::info!("device id {:08X}{:08X}, custom id after this flash: {id}", ids[1], ids[0]);
+            *BOARD.lock().unwrap() = id;
+        }
+        Err(e) => tracing::warn!("could not read the device id: {e}"),
+    }
 
     if backup {
         let mut buf = vec![0u8; BACKUP_LEN];
@@ -291,6 +322,7 @@ pub extern "C" fn flash(
     read_ep: u32, write_ep: u32, max_packet: u32, verbose: u32, backup: u32,
 ) -> i32 {
     BACKUP.lock().unwrap().clear();
+    BOARD.lock().unwrap().clear();
     let _ = tracing_subscriber::fmt()
         .with_max_level(if verbose != 0 { tracing::Level::DEBUG } else { tracing::Level::INFO })
         .with_writer(io::stderr)
@@ -342,6 +374,16 @@ pub extern "C" fn backup_len() -> u32 {
     BACKUP.lock().unwrap().len() as u32
 }
 
+#[no_mangle]
+pub extern "C" fn board_id_ptr() -> *const u8 {
+    BOARD.lock().unwrap().as_ptr()
+}
+
+#[no_mangle]
+pub extern "C" fn board_id_len() -> u32 {
+    BOARD.lock().unwrap().len() as u32
+}
+
 #[cfg(test)]
 mod tests {
     use super::{parse_hex, to_ihex};
@@ -365,6 +407,17 @@ mod tests {
         assert!(parse_hex(":02000004000FEB\n:047FFE000102030475\n:00000001FF\n").is_err());
         // UICR (0xFF8000): refused.
         assert!(parse_hex(":0200000400FFFB\n:048000000102030472\n:00000001FF\n").is_err());
+    }
+
+    #[test]
+    fn board_ids() {
+        use super::{board_id, cfg_page};
+        // A DK reading DEVICEID = 35105036 C4B8742D over SWD; its firmware logs
+        // "custom id nRF9151-DK_C4B8742D35105036" (checked 2026-11-05).
+        let ids = [0x3510_5036, 0xC4B8_742D];
+        assert_eq!(board_id(ids, &[0xFF; 0x200]), "nRF9151-DK_C4B8742D35105036");
+        assert_eq!(board_id(ids, &cfg_page("tok", "", "").unwrap().unwrap()), "nRF9151-DK_C4B8742D35105036");
+        assert_eq!(board_id(ids, &cfg_page("", "bench-7", "").unwrap().unwrap()), "bench-7");
     }
 
     #[test]
