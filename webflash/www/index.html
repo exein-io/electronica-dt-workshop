@@ -107,7 +107,7 @@
 
   <div class="mode">
     <label><input type="radio" name="mode" value="simple" checked> Flash</label>
-    <label><input type="radio" name="mode" value="extended"> Extended: own .hex, custom id, host, nuSIM backup, terminal, log</label>
+    <label><input type="radio" name="mode" value="extended"> Extended: custom id, host, nuSIM backup, terminal, log</label>
     <label><input type="radio" name="mode" value="terminal"> Serial terminal only</label>
   </div>
 
@@ -125,7 +125,7 @@
     <div class="row" id="release-row" hidden>
       <label><input type="radio" name="img" id="img-release"> Release <strong id="release-name"></strong> (latest CI build)</label>
     </div>
-    <div class="row ext">
+    <div class="row">
       <label><input type="radio" name="img" id="img-file" checked> Own .hex file</label>
       <button id="pick-file">Choose .hex…</button>
       <span id="file-name" class="status">none chosen</span>
@@ -243,8 +243,7 @@ $("token").oninput = () => ($("token-warn").hidden = $("token").value.trim() !==
 
 // --- Image choice: the bundled release or an own .hex ------------------------
 let picked = null; // File
-// Simple mode always flashes the bundled release; extended mode follows the radio buttons.
-const useRelease = () => !ext() || $("img-release").checked;
+const useRelease = () => $("img-release").checked;
 function updateFlash() {
   $("flash").disabled = !usb || (useRelease() ? !release : !picked);
 }
