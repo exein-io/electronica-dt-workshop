@@ -4,8 +4,8 @@
 Same page the web flasher writes at 0x80000 (start of the unused MCUboot
 secondary slot): "EXEINCFG" + token, custom id and host as NUL-terminated
 strings, empty = keep the firmware's value. Flash it next to the app with
-nrfutil; the board registers with the token on its next boot (if it has no
-identity yet) and then clears it.
+nrfutil; the board deletes any old identity, registers with the token on its next
+boot and then clears it.
 
   scripts/settings-hex.py --token <bootstrap token> -o settings.hex
   nrfutil device program --firmware settings.hex --options chip_erase_mode=ERASE_RANGES_TOUCHED_BY_FIRMWARE
