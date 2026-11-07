@@ -286,6 +286,13 @@ Then `workload_start()` arms Buttons 1-4.
 - **`no connectivity before registration (-116)`:** LTE attach slower than `CONFIG_RUNTIME_MONITOR_NET_CONNECT_TIMEOUT` (180 s).
 - **Incidents POST `400`:** the platform rejected a finding in the batch (the whole batch is dropped). All four finding types are accepted on platform.exein.io since 2026-10-23.
 - **Log Event incidents without pressing Button 1:** the LOG policy reports *every* `LOG_ERR` on the board, including the system's own (modem, LTE).
+- **Linux, web flasher: `Failed to execute 'open' on 'SerialPort': Failed to open serial port.`:** flashing works (WebUSB) but the terminal doesn't: `/dev/ttyACM*` is `root:dialout` 0660 and your user can't open it. Fix without logging out: a udev rule that gives the logged-in user access and keeps ModemManager off the port, then re-apply it (or replug the J-Link):
+  ```sh
+  echo 'SUBSYSTEM=="tty", ATTRS{idVendor}=="1366", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"' | sudo tee /etc/udev/rules.d/70-jlink-tty.rules
+  sudo udevadm control --reload && sudo udevadm trigger --action=add --subsystem-match=tty
+  getfacl /dev/ttyACM0   # expect user:<you>:rw-
+  ```
+  Alternative: `sudo usermod -aG dialout $USER`, then log out and in again.
 - **No AT response:** DTR must be asserted (picocom `--noreset`, minicom and raw `stty` fail silently).
 
 ## Contacts

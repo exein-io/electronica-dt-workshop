@@ -15,7 +15,7 @@ In the devcontainer on GitHub Codespaces, port 8765 is forwarded privately (behi
 
 - Chrome or Edge **137+** (WebUSB + WebAssembly JSPI) on **Linux, macOS, Windows or Android** (phone with USB OTG). Windows (WinUSB) is tested on one machine; there a flash once failed mid-erase (2026-10-16, before MCUboot was protected), not reproduced since v1.1.3.
 - Close nRF Connect, `nrfutil`, J-Link tools and anything else using the probe: only one program can hold it.
-- Linux: your user needs access to the J-Link USB device (same udev setup as [probe-rs](https://probe.rs/docs/getting-started/probe-setup/)).
+- Linux: your user needs access to the J-Link USB device (same udev setup as [probe-rs](https://probe.rs/docs/getting-started/probe-setup/)). The serial terminal also needs access to the J-Link's tty (`/dev/ttyACM*`), see [Troubleshooting](../README.md#troubleshooting).
 
 ## Usage
 
