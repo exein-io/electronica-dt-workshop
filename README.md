@@ -120,6 +120,10 @@ Use this whenever you prefer Nordic's tools or can't use Chrome/Edge. **Never** 
 
 `settings.hex` is the same settings page the web flasher writes (`0x80000`). The board clears the token after one registration attempt. A token replaces the board's identity (a new agent); reflashing only the firmware keeps it.
 
+### Serial Modem firmware from DT (cellular session)
+
+`vendor/dt-serial-modem-nusim.hex` is Deutsche Telekom's application firmware with nuSIM and Nordic's Serial Modem (AT commands over the J-Link UART), for the optional cellular part of the workshop. It is not the Exein demo and has no Runtime monitor. It passes `scripts/check-nusim-hex.py`; flash it like `workshop.hex` above (web flasher **Own .hex file**, or nrfutil with `ERASE_RANGES_TOUCHED_BY_FIRMWARE`), no settings page. Flash `workshop.hex` again to get back to the demo.
+
 ## Build and flash from source
 
 After [Workspace](#workspace):
@@ -324,7 +328,7 @@ Can't connect the J-Link, the serial chooser is empty, or the terminal opens but
 │   ├── build.sh             # build app/ + nuSIM check
 │   ├── settings-hex.py      # settings page (token, custom id, host) as a hex for nrfutil
 │   └── check-nusim-hex.py   # refuse images that write the nuSIM region
-├── vendor/                  # ncs-nusim-app ncs-v3.1.0 snapshot (the workspace manifest)
+├── vendor/                  # ncs-nusim-app ncs-v3.1.0 snapshot (the workspace manifest), DT Serial Modem hex
 ├── webflash/                # browser flasher: probe-rs → WebAssembly, WebUSB (vendored probe-rs)
 ├── .devcontainer/, .github/workflows/
 ```
