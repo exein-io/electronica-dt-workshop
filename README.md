@@ -281,6 +281,8 @@ Then `workload_start()` arms Buttons 1-4.
 
 ## Troubleshooting
 
+Can't connect the J-Link, the serial chooser is empty, or the terminal opens but stays silent: [CONNECTING.md](CONNECTING.md) collects every known cause per OS.
+
 - **Flashing failed halfway:** don't unplug, power off or reset the board, flash again right away. On the nRF9151 debug access locks at every reset until the firmware opens it; without a bootloader nothing opens it, and the only way back in is ERASEALL, which destroys the nuSIM.
 - **`NW reg status: 90` (UICC_FAIL):** built without the Redtea TF-M (`overlay-nusim.conf` missing), or the nuSIM ITS is erased (check `0xF8000`; restoring needs a full backup taken before, otherwise DT has to re-provision).
 - **`no connectivity before registration (-116)`:** LTE attach slower than `CONFIG_RUNTIME_MONITOR_NET_CONNECT_TIMEOUT` (180 s).
